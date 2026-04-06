@@ -1302,8 +1302,8 @@ export default function App() {
       && hasSwapChoices;
     const swapRouteUnavailable = needsManualSwapFirst
       && Boolean(activeRoute)
-      && activeRoute.provider !== "uniswap-trading-api"
-      && activeRoute.provider !== "okx-dex-aggregator";
+      && activeRoute?.provider !== "uniswap-trading-api"
+      && activeRoute?.provider !== "okx-dex-aggregator";
     const routeBadgeLabel = activeRoute?.routeType === "direct_join"
       ? "Direct"
       : needsManualSwapFirst
@@ -1473,7 +1473,7 @@ export default function App() {
                         ? `Choose which token you want ArenaAgent to swap into ${tokenSymbol}. After you select it and confirm the required wallet transactions, ArenaAgent will verify your ${tokenSymbol} balance and relay the join automatically.`
                         : swapRouteUnavailable
                           ? activeRoute?.provider === "insufficient-balance"
-                            ? activeRoute.explanation
+                            ? (activeRoute?.explanation ?? `Your wallet does not hold enough ${activeRoute?.fromToken.symbol ?? "source token"} for this route.`)
                             : `Your wallet approved ${tokenSymbol}, but the current X Layer setup does not currently have a live ${activeRoute?.fromToken.symbol ?? "source token"} to ${tokenSymbol} swap route. This arena will only work if your wallet already holds ${tokenSymbol}.`
                           : `After your approval and swap are confirmed, ArenaAgent will verify your ${tokenSymbol} balance and relay the join automatically.`}
                     </p>
@@ -1487,7 +1487,7 @@ export default function App() {
                         ? joinStep
                         : swapRouteUnavailable
                           ? activeRoute?.provider === "insufficient-balance"
-                            ? `Not Enough ${activeRoute.fromToken.symbol}`
+                            ? `Not Enough ${activeRoute?.fromToken.symbol ?? tokenSymbol}`
                             : `${tokenSymbol} Swap Unavailable`
                           : shouldChooseSwapSource && !selectedSwapSourceSymbol
                             ? "Choose A Token First"
