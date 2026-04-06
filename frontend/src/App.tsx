@@ -1295,10 +1295,11 @@ export default function App() {
       ? (selectedSwapSourceSymbol ? swapChoices.find((route) => route.fromToken.symbol === selectedSwapSourceSymbol) ?? null : null)
       : recommendedRoute;
     const needsApproval = Boolean(walletAddress) && arena.settlementToken?.kind === "erc20" && !allowanceReady;
+    const hasSwapChoices = swapChoices.length > 0;
     const needsManualSwapFirst = Boolean(walletAddress)
       && arena.settlementToken?.kind === "erc20"
       && allowanceReady
-      && activeRoute?.routeType === "swap_then_join";
+      && hasSwapChoices;
     const swapRouteUnavailable = needsManualSwapFirst
       && activeRoute?.provider !== "uniswap-trading-api"
       && activeRoute?.provider !== "okx-dex-aggregator";
@@ -1471,7 +1472,7 @@ export default function App() {
                         ? activeRoute?.provider === "insufficient-balance"
                           ? activeRoute.explanation
                           : `Your wallet approved ${tokenSymbol}, but the current X Layer setup does not currently have a live ${activeRoute?.fromToken.symbol ?? "source token"} to ${tokenSymbol} swap route. This arena will only work if your wallet already holds ${tokenSymbol}.`
-                        : `Your signed transaction was most likely the token approval, not the arena join. You are not joined yet. Swap into ${tokenSymbol} first, then tap Join and ArenaAgent will relay the entry.`}
+                        : `After your approval and swap are confirmed, ArenaAgent will verify your ${tokenSymbol} balance and relay the join automatically.`}
                     </p>
                     <button
                       type="button"
