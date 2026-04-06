@@ -1,0 +1,11 @@
+node_modules/
+dist/
+out/
+coverage/
+artifacts/
+cache/
+.env
+.env.*
+!.env.example
+backend/data/*.json
+frontend/.vite/
