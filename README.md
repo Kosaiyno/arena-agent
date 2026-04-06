@@ -106,9 +106,9 @@ External integrations:
 
 | Network | Contract Address |
 |---|---|
-| X Layer Testnet (Chain 195) | `deploy: npx hardhat run scripts/deploy.ts --network xlayer_testnet` |
-| X Layer Mainnet (Chain 196) | `deploy: npx hardhat run scripts/deploy.ts --network xlayer` |
-| Local Hardhat | `deploy: npx hardhat run scripts/deploy.ts --network localhost` |
+| X Layer Mainnet (Chain 196) | `0xD058F2228463277E38c093CC50ad42677e0DfbE8` |
+| X Layer Testnet (Chain 195) | Not deployed |
+| Local Hardhat | Local development only |
 
 After deployment, set `CONTRACT_ADDRESS` and `APP_CHAIN_ID` in `backend/.env`.
 
@@ -325,7 +325,7 @@ Run it with a TypeScript runner such as `tsx` once the backend is live.
 
 | Name | Role | Contact |
 |---|---|---|
-| [Your name] | Full-stack / smart contracts | [@handle] |
+| Kosaiyno | Solo builder · full-stack · smart contracts | https://github.com/Kosaiyno |
 
 ---
 
