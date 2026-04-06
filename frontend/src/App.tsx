@@ -1301,8 +1301,9 @@ export default function App() {
       && allowanceReady
       && hasSwapChoices;
     const swapRouteUnavailable = needsManualSwapFirst
-      && activeRoute?.provider !== "uniswap-trading-api"
-      && activeRoute?.provider !== "okx-dex-aggregator";
+      && Boolean(activeRoute)
+      && activeRoute.provider !== "uniswap-trading-api"
+      && activeRoute.provider !== "okx-dex-aggregator";
     const routeBadgeLabel = activeRoute?.routeType === "direct_join"
       ? "Direct"
       : needsManualSwapFirst
@@ -1468,11 +1469,13 @@ export default function App() {
                       </div>
                     )}
                     <p className="route-hint-text">
-                      {swapRouteUnavailable
-                        ? activeRoute?.provider === "insufficient-balance"
-                          ? activeRoute.explanation
-                          : `Your wallet approved ${tokenSymbol}, but the current X Layer setup does not currently have a live ${activeRoute?.fromToken.symbol ?? "source token"} to ${tokenSymbol} swap route. This arena will only work if your wallet already holds ${tokenSymbol}.`
-                        : `After your approval and swap are confirmed, ArenaAgent will verify your ${tokenSymbol} balance and relay the join automatically.`}
+                      {shouldChooseSwapSource && !selectedSwapSourceSymbol
+                        ? `Choose which token you want ArenaAgent to swap into ${tokenSymbol}. After you select it and confirm the required wallet transactions, ArenaAgent will verify your ${tokenSymbol} balance and relay the join automatically.`
+                        : swapRouteUnavailable
+                          ? activeRoute?.provider === "insufficient-balance"
+                            ? activeRoute.explanation
+                            : `Your wallet approved ${tokenSymbol}, but the current X Layer setup does not currently have a live ${activeRoute?.fromToken.symbol ?? "source token"} to ${tokenSymbol} swap route. This arena will only work if your wallet already holds ${tokenSymbol}.`
+                          : `After your approval and swap are confirmed, ArenaAgent will verify your ${tokenSymbol} balance and relay the join automatically.`}
                     </p>
                     <button
                       type="button"
