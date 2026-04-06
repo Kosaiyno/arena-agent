@@ -386,7 +386,7 @@ The ArenaAgent activity feed provides a real-time, observable view of agent deci
 
 ## Judge Quick Test
 
-The fastest way to verify the plug-and-play story is:
+The fastest way to verify the plug-and-play integration flow is:
 
 1. Start the backend.
 2. Call `POST /operator/chat` or use the SDK to create an arena.
