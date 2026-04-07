@@ -325,7 +325,9 @@ Run it with a TypeScript runner such as `tsx` once the backend is live.
 
 | Name | Role | Contact |
 |---|---|---|
-| vigo | Solo builder · full-stack · smart contracts | https://x.com/Vigothecreator |
+| Vigo (Kosaiyno) | Solo builder / full-stack / smart contracts | @vigothecreator |
+
+Vigo (Kosaiyno) - Solo builder / full-stack / smart contracts - @vigothecreator
 
 ---
 

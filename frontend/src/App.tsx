@@ -1684,6 +1684,7 @@ export default function App() {
       <header className="topbar">
         <div className="topbar-brand">
           <span className="brand-orb" />
+          <img className="brand-logo" src="/arena-agent-logo.png" alt="ArenaAgent logo" />
           <span className="brand-name">ArenaAgent</span>
           <span className="brand-chain">X Layer</span>
         </div>

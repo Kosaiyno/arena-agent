@@ -127,6 +127,13 @@ label {
   animation: orb-pulse 2.5s ease-in-out infinite;
 }
 
+.brand-logo {
+  width: 2rem;
+  height: 2rem;
+  object-fit: contain;
+  border-radius: 0.55rem;
+}
+
 @keyframes orb-pulse {
   0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--accent); }
   50% { opacity: 0.6; box-shadow: 0 0 3px var(--accent); }
