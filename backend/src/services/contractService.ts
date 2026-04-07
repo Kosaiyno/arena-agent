@@ -5,8 +5,11 @@ import { contractAbi } from "./contractAbi.js";
 
 const DEFAULT_ENTRY_TOKEN_ADDRESS = env.supportedTokens.find((token) => token.symbol === "USDC")?.address ?? null;
 
+export type ArenaMonitorState = Pick<ArenaState, "id" | "endTime" | "closed" | "finalized">;
+
 export class ContractService {
-  private readonly provider = new JsonRpcProvider(env.rpcUrl);
+  // X Layer public RPC often rejects large batch requests, so force single-call mode.
+  private readonly provider = new JsonRpcProvider(env.rpcUrl, undefined, { batchMaxCount: 1 });
   private readonly signer = new Wallet(env.privateKey, this.provider);
   private readonly contract = new Contract(env.contractAddress, contractAbi, this.signer);
 
@@ -77,10 +80,28 @@ export class ContractService {
     };
   }
 
+  async getArenaMonitorState(arenaId: number): Promise<ArenaMonitorState> {
+    const result = await this.contract.getArena(arenaId);
+
+    return {
+      id: Number(result[0]),
+      endTime: Number(result[4]),
+      closed: result[5],
+      finalized: result[6],
+    };
+  }
+
   async listArenas(): Promise<ArenaState[]> {
     const arenaCount = Number(await this.contract.arenaCount());
     return Promise.all(
       Array.from({ length: arenaCount }, (_, index) => this.getArena(index + 1)),
+    );
+  }
+
+  async listArenasForMonitor(): Promise<ArenaMonitorState[]> {
+    const arenaCount = Number(await this.contract.arenaCount());
+    return Promise.all(
+      Array.from({ length: arenaCount }, (_, index) => this.getArenaMonitorState(index + 1)),
     );
   }
 

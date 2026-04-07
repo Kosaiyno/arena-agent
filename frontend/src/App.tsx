@@ -1364,9 +1364,11 @@ export default function App() {
       : recommendedRoute;
     const needsApproval = Boolean(walletAddress) && arena.settlementToken?.kind === "erc20" && !allowanceReady;
     const hasSwapChoices = swapChoices.length > 0;
+    const hasDirectRoute = recommendedRoute?.routeType === "direct_join";
     const needsManualSwapFirst = Boolean(walletAddress)
       && arena.settlementToken?.kind === "erc20"
       && allowanceReady
+      && !hasDirectRoute
       && hasSwapChoices;
     const swapRouteUnavailable = needsManualSwapFirst
       && Boolean(activeRoute)

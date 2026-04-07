@@ -6,6 +6,7 @@ import { StateStore } from "./stateStore.js";
 
 export class ArenaMonitor {
   private timer: NodeJS.Timeout | null = null;
+  private tickInFlight = false;
 
   constructor(
     private readonly contractService: ContractService,
@@ -19,8 +20,21 @@ export class ArenaMonitor {
     }
 
     this.timer = setInterval(() => {
+      if (this.tickInFlight) {
+        return;
+      }
+
+      this.tickInFlight = true;
       this.tick().catch((err: unknown) => {
-        console.warn("[ArenaMonitor] tick error:", err instanceof Error ? err.message : String(err));
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.toLowerCase().includes("too many rpc calls in batch request") || message.toLowerCase().includes("missing response for request")) {
+          console.warn("[ArenaMonitor] X Layer RPC throttled monitor reads; retrying on the next poll.");
+          return;
+        }
+
+        console.warn("[ArenaMonitor] tick error:", message);
+      }).finally(() => {
+        this.tickInFlight = false;
       });
     }, env.pollIntervalMs);
   }
@@ -35,7 +49,7 @@ export class ArenaMonitor {
   }
 
   async tick(): Promise<void> {
-    const arenas = await this.contractService.listArenas();
+    const arenas = await this.contractService.listArenasForMonitor();
     const now = Math.floor(Date.now() / 1000);
 
     for (const arena of arenas) {
