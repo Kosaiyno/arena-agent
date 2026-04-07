@@ -358,6 +358,28 @@ export default function App() {
     }
   }
 
+  function isRpcThrottleError(message: string): boolean {
+    const lower = message.toLowerCase();
+    return lower.includes("too many rpc calls in batch request")
+      || lower.includes("missing response for request")
+      || lower.includes("request timeout")
+      || lower.includes("bad_data");
+  }
+
+  async function confirmJoinedAfterRpcError(arenaId: number, user: string): Promise<boolean> {
+    try {
+      const response = await listArenas();
+      setArenas(response.arenas);
+      if (response.metaMap) {
+        setArenaMetaMap(response.metaMap);
+      }
+      const found = response.arenas.find((arena) => arena.id === arenaId);
+      return Boolean(found?.players.some((player) => player.toLowerCase() === user.toLowerCase()));
+    } catch {
+      return false;
+    }
+  }
+
   function appendArenaFeedItem(
     arenaId: number,
     item: Omit<ArenaFeedItem, "id" | "createdAt" | "arenaId">,
@@ -751,12 +773,14 @@ export default function App() {
             tone: "warning",
           });
         }
-      } catch {
+      } catch (error) {
         setRecommendedRoute(null);
         setCandidateRoutes([]);
         upsertPersonalActivityItem(`route-${selectedArena.id}`, selectedArena.id, {
-          title: "Route evaluation failed",
-          detail: `Route evaluation failed — I could not complete balance and liquidity checks for ${arenaLabelFor(selectedArena.id)}.`,
+          title: isRpcThrottleError(error instanceof Error ? error.message : String(error)) ? "Route checks delayed" : "Route evaluation failed",
+          detail: isRpcThrottleError(error instanceof Error ? error.message : String(error))
+            ? `Route checks are temporarily delayed because the X Layer RPC is rate-limiting balance and liquidity reads for ${arenaLabelFor(selectedArena.id)}. Try again in a moment.`
+            : `Route evaluation failed — I could not complete balance and liquidity checks for ${arenaLabelFor(selectedArena.id)}.`,
           tone: "warning",
         });
       } finally {
@@ -1111,6 +1135,28 @@ export default function App() {
       await refreshArenas(arena.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to join";
+      if (isRpcThrottleError(message)) {
+        const confirmedJoined = await confirmJoinedAfterRpcError(arena.id, walletAddress);
+        if (confirmedJoined) {
+          setJoinStep("Joined successfully.");
+          upsertArenaFeedItem(arena.id, "join-flow", {
+            title: "Join confirmed",
+            detail: `Your join to ${arenaLabelFor(arena.id)} was confirmed on-chain, but X Layer RPC throttling delayed the status refresh.`,
+            tone: "success",
+          });
+          setStatusMsg(`Joined arena #${arena.id}. RPC refresh was delayed, but your entry is confirmed.`);
+          return;
+        }
+
+        setJoinStep("Waiting for chain refresh...");
+        upsertArenaFeedItem(arena.id, "join-flow", {
+          title: "Join submitted",
+          detail: `Your transaction was submitted, but X Layer RPC throttling delayed confirmation checks for ${arenaLabelFor(arena.id)}. Refresh and verify in a moment.`,
+          tone: "warning",
+        });
+        setStatusMsg("Join may be complete, but X Layer RPC throttling delayed confirmation. Refresh in a moment.");
+        return;
+      }
       setJoinStep(message);
       upsertArenaFeedItem(arena.id, "join-flow", {
         title: "Join failed",
@@ -1187,6 +1233,28 @@ export default function App() {
       await refreshArenas(arena.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Swap failed";
+      if (isRpcThrottleError(message)) {
+        const confirmedJoined = await confirmJoinedAfterRpcError(arena.id, walletAddress);
+        if (confirmedJoined) {
+          setJoinStep("Joined successfully.");
+          upsertArenaFeedItem(arena.id, "swap-flow", {
+            title: "Swap and join confirmed",
+            detail: `The swap and relay flow for ${arenaLabelFor(arena.id)} completed, but X Layer RPC throttling delayed the post-join refresh. Your entry is confirmed on-chain.`,
+            tone: "success",
+          });
+          setStatusMsg(`Swap complete and joined arena #${arena.id}. RPC refresh was delayed, but your entry is confirmed.`);
+          return;
+        }
+
+        setJoinStep("Waiting for chain refresh...");
+        upsertArenaFeedItem(arena.id, "swap-flow", {
+          title: "Swap submitted",
+          detail: `Swap execution finished, but X Layer RPC throttling delayed the final join confirmation check for ${arenaLabelFor(arena.id)}. Refresh in a moment to verify the result.`,
+          tone: "warning",
+        });
+        setStatusMsg("Swap completed, but X Layer RPC throttling delayed join confirmation. Refresh in a moment.");
+        return;
+      }
       setJoinStep(message);
       upsertArenaFeedItem(arena.id, "swap-flow", {
         title: "Swap failed",
