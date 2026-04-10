@@ -4,7 +4,7 @@
 
 ArenaAgent turns competitions into autonomous on-chain economic systems, where entry, participation, and payouts are fully managed by an AI agent.
 
-ArenaAgent is an autonomous on-chain competition operator deployed on X Layer. It can create, manage, and settle competitive environments without human intervention. An on-chain operator wallet (Agentic Wallet) manages the full lifecycle of paid competitive arenas: creation → join → play → score → rank → reward settlement. Players can enter arenas using any supported token, the agent resolves the best swap route via Uniswap or the OKX DEX aggregator, and entry verification can use the x402 payment protocol for machine-to-machine proof-of-payment.
+ArenaAgent is an autonomous on-chain competition operator deployed on X Layer. It can create, manage, and settle competitive environments without human intervention. An on-chain operator wallet (Agentic Wallet) manages the full lifecycle of paid competitive arenas: creation → join → play → score → rank → reward settlement. Players can enter arenas using any supported token, the agent evaluates and recommends available funding paths using live routing integrations, and entry verification can use the x402 payment protocol for machine-to-machine proof-of-payment.
 
 ## Why ArenaAgent Matters
 
@@ -30,7 +30,7 @@ ArenaAgent actively reasons about:
 
 - user wallet balances
 - required settlement tokens
-- optimal swap routes across Uniswap and OKX DEX
+- optimal swap routes across live liquidity providers
 - join execution path selection
 - payment verification via x402
 - arena close and payout timing
@@ -57,7 +57,7 @@ ArenaAgent:
 - routes tokens into the correct settlement asset
 - records scores from an external results source
 - finalizes the winner on-chain
-- attempts automatic payout and leaves fallback claim support if needed
+- finalizes the winner on-chain and executes payout, with fallback claim support if needed
 
 ---
 
@@ -95,8 +95,8 @@ External integrations:
 | Integration | Purpose |
 |---|---|
 | Uniswap Trading API | Live swap quotes for token-to-settlement routing |
-| OKX DEX Aggregator (Onchain OS) | Best-price swaps via 400+ on-chain protocols |
-| OKX Onchain OS API (HMAC-signed) | Onchain OS skills: wallet, portfolio, dex-swap, gateway |
+| OKX DEX Aggregator (Onchain OS) | Optional route quote and swap transaction fallback for supported token pairs |
+| OKX Onchain OS API (HMAC-signed) | Signed access to OKX DEX aggregation endpoints used by the routing layer |
 | x402 Payment Protocol | HTTP 402 payment challenges + on-chain tx proof verification |
 | OpenAI-compatible LLM | Natural-language operator intent parsing (optional) |
 
@@ -126,7 +126,7 @@ The backend `UniswapTradeService` calls the Uniswap Trading API (`trade-api.gate
 
 Set `UNISWAP_API_KEY` to activate live quotes. Without it, the system falls back to shape-correct estimation using token rate metadata.
 
-### OKX / Onchain OS — `okx-dex-swap`, `okx-agentic-wallet`, `okx-wallet-portfolio`, `okx-onchain-gateway`
+### OKX / Onchain OS integration
 
 The backend `OnchainOsService` uses HMAC-SHA256 signed requests to the OKX DEX Aggregator API:
 
@@ -135,9 +135,9 @@ GET /api/v5/dex/aggregator/quote
 Headers: OK-ACCESS-KEY · OK-ACCESS-SIGN · OK-ACCESS-TIMESTAMP · OK-ACCESS-PASSPHRASE
 ```
 
-- When Onchain OS credentials are configured, the route recommender calls this API and returns OKX DEX as a live swap route provider.
-- The **Agentic Wallet** (`AgentWalletService`) derives its identity from the operator private key and exposes it at `GET /agent/wallet` — this is the on-chain identity that owns and controls all arenas.
-- Capabilities surfaced: wallet identity, DEX swap, portfolio inspection, gateway execution.
+- When Onchain OS credentials are configured, the routing layer can request OKX DEX quotes and build swap transactions for supported token pairs on X Layer.
+- The route recommender uses this integration as an additional live liquidity source alongside Uniswap, allowing ArenaAgent to compare available execution paths before presenting a swap-and-join plan.
+- The **Agentic Wallet** (`AgentWalletService`) derives its identity from the operator private key and exposes it at `GET /agent/wallet`, while wallet balance inspection is provided by the backend balance inspection pipeline and optional OKLink enrichment.
 
 Set `ONCHAIN_OS_API_KEY`, `ONCHAIN_OS_SECRET_KEY`, and `ONCHAIN_OS_PASSPHRASE` to activate.
 
@@ -168,7 +168,7 @@ Scores are submitted by the operator (off-platform game result)
           ↓
 ArenaMonitor polls → auto-closes arena after endTime
           ↓
-ArenaMonitor finalizes the top winner on-chain and attempts automatic payout
+ArenaMonitor finalizes the top winner on-chain and executes payout, with fallback claim support if needed
           ↓
 If automatic payout fails, a fallback claim() remains available for the winner
 ```
@@ -333,11 +333,12 @@ Vigo (Kosaiyno) - Solo builder / full-stack / smart contracts - @vigothecreator
 
 ## Project Positioning in the X Layer Ecosystem
 
-ArenaAgent demonstrates how an Agentic Wallet with Onchain OS skills can manage real economic activity on X Layer end-to-end without manual intervention:
+ArenaAgent demonstrates how an Agentic Wallet can manage real economic activity on X Layer end-to-end without manual intervention:
 
 - **Low-fee settlement**: X Layer's EVM compatibility and gas efficiency make it practical to run competitive micro-economies with small entry fees.
-- **Onchain OS as the agent brain**: The operator wallet is not just a key pair — it's an Onchain OS-compatible agent that can quote, route, and settle using OKX infrastructure.
+- **Routing-aware operator flow**: The operator wallet is not just a key pair — it coordinates quote discovery, join path selection, settlement, and payout logic across on-chain and API-backed integrations.
 - **Uniswap for token-agnostic entry**: Players on X Layer can hold OKB, USDT, USDC, or any supported token and the agent routes them into the correct settlement asset using Uniswap quotes.
+- **OKX as an additional routing surface**: When configured, the backend can also source OKX DEX quotes and swap transaction payloads for supported pairs on X Layer.
 - **x402 for machine-to-machine payments**: The x402 flow enables future agent-to-agent compositions where an upstream AI agent can challenge-pay into an arena on behalf of a user, verified fully on-chain.
 - **Composable design**: The arena contract, operator service, scoring logic, and routing layer are each independently replaceable, making ArenaAgent a building block for game studios, prediction markets, or any competitive module running on X Layer.
 
