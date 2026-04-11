@@ -105,7 +105,7 @@ External integrations:
 
 | Network | Contract Address |
 |---|---|
-| X Layer Mainnet (Chain 196) | `0xD058F2228463277E38c093CC50ad42677e0DfbE8` |
+| X Layer Mainnet (Chain 196) | `0x12A55AF45da5F4a577056e74648e17436439d60d` |
 | X Layer Testnet (Chain 195) | Not deployed |
 | Local Hardhat | Local development only |
 
