@@ -14,7 +14,9 @@ export type AgentWalletIdentity = {
   integrations: {
     uniswapTradingApi: boolean;
     onchainOs: boolean;
+    okxPortfolio: boolean;
     x402: boolean;
+    okxX402: boolean;
   };
   contractAddress: string;
 };
@@ -42,7 +44,9 @@ export class AgentWalletService {
         "Inspect wallet balances and recommend optimal token entry routes",
         "Fetch live swap quotes via Uniswap Trading API",
         "Execute DEX swaps via OKX / Onchain OS aggregator",
+        "Enrich wallet views with OKX-backed portfolio discovery",
         "Issue x402 payment challenges and verify on-chain proof",
+        "Publish OKX-compatible x402 payment metadata for external clients",
       ],
       skills: [
         "uniswap/swap-integration",
@@ -50,11 +54,14 @@ export class AgentWalletService {
         "okx/dex-swap",
         "okx/wallet-portfolio",
         "okx/onchain-gateway",
+        "okx/x402-payment",
       ],
       integrations: {
         uniswapTradingApi: Boolean(env.uniswapApiKey),
         onchainOs: Boolean(env.onchainOsApiKey && env.onchainOsSecretKey && env.onchainOsPassphrase),
+        okxPortfolio: Boolean(env.okLinkApiKey),
         x402: env.x402Enabled,
+        okxX402: env.x402Enabled,
       },
       contractAddress: env.contractAddress,
     };

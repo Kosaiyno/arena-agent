@@ -71,6 +71,7 @@ export const env = {
   openAiBaseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
   openAiModel: process.env.OPENAI_MODEL ?? "gpt-4.1-mini",
   x402Enabled: (process.env.X402_ENABLED ?? "true") !== "false",
+  preferOkxSwap: (process.env.PREFER_OKX_SWAP ?? "false") === "true",
   okLinkApiKey: process.env.OKLINK_API_KEY ?? "",
   okLinkChainShortName: process.env.OKLINK_CHAIN_SHORT_NAME ?? "XLAYER",
 };

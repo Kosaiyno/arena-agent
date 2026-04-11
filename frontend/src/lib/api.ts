@@ -167,13 +167,38 @@ export type X402PaymentRequirements = {
       arenaId: number;
     };
   };
+  okxX402?: {
+    supported: boolean;
+    reason?: string;
+    x402Version?: number;
+    resource?: {
+      url: string;
+      description: string;
+      mimeType: string;
+    };
+    accepts?: Array<{
+      scheme: "exact";
+      network: string;
+      amount: string;
+      payTo: string;
+      asset: string;
+      maxTimeoutSeconds: number;
+      extra: {
+        name: string;
+        version: string;
+        arenaId: number;
+      };
+    }>;
+  };
 };
 
 export type X402Verification = {
   verified: boolean;
   arenaId: number;
   player: string;
-  txHash: string;
+  provider: string;
+  relayed: boolean;
+  settlementToken?: Arena["settlementToken"];
   message: string;
 };
 
@@ -288,6 +313,14 @@ export async function verifyX402Payment(arenaId: number, txHash: string): Promis
   return request(`/arena/${arenaId}/x402-join`, {
     method: "POST",
     headers: { "x-payment-proof": txHash },
+    body: JSON.stringify({}),
+  });
+}
+
+export async function submitX402Payment(arenaId: number, headerValue: string): Promise<X402Verification> {
+  return request(`/arena/${arenaId}/x402-join`, {
+    method: "POST",
+    headers: { "PAYMENT-SIGNATURE": headerValue },
     body: JSON.stringify({}),
   });
 }

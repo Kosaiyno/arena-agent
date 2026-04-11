@@ -39,6 +39,25 @@ export class ContractService {
     await tx.wait();
   }
 
+  async joinArenaWithAuthorization(arenaId: number, authorization: {
+    from: string;
+    to: string;
+    value: string;
+    validAfter: string;
+    validBefore: string;
+    nonce: string;
+  }, signature: string): Promise<void> {
+    const tx = await this.contract.joinArenaWithAuthorization(arenaId, {
+      from: authorization.from,
+      to: authorization.to,
+      value: authorization.value,
+      validAfter: authorization.validAfter,
+      validBefore: authorization.validBefore,
+      nonce: authorization.nonce,
+    }, signature);
+    await tx.wait();
+  }
+
   async submitScore(arenaId: number, user: string, score: number): Promise<void> {
     const tx = await this.contract.submitScore(arenaId, user, score);
     await tx.wait();

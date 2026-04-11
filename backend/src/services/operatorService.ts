@@ -47,7 +47,7 @@ export class OperatorService {
         {
           name: "Onchain OS skills",
           status: onchainStatus.enabled ? "configured" : "ready",
-          note: "Agentic Wallet, DEX swap, and gateway flows aligned with X Layer.",
+          note: "Portfolio enrichment, DEX swap, gateway, and x402-compatible payment flows aligned with X Layer.",
         },
         {
           name: "Uniswap AI skills",
@@ -164,15 +164,16 @@ export class OperatorService {
   }
 
   private async resolveIntent(prompt: string, context: OperatorContext, history: Array<{ role: "user" | "agent"; text: string }> = []): Promise<OperatorIntent> {
-    if (!env.openAiApiKey) {
-      return this.resolveIntentWithRules(prompt, context, history);
+    const rulesIntent = this.resolveIntentWithRules(prompt, context, history);
+    if (rulesIntent.type !== "help" || !env.openAiApiKey) {
+      return rulesIntent;
     }
 
     try {
       return await this.resolveIntentWithAi(prompt, context, history);
     } catch (err) {
       console.error("[AI] resolveIntentWithAi failed:", err instanceof Error ? err.message : String(err));
-      return this.resolveIntentWithRules(prompt, context, history);
+      return rulesIntent;
     }
   }
 
@@ -307,8 +308,19 @@ export class OperatorService {
     const lower = prompt.toLowerCase();
     const arenaIdFromContext = this.resolveArenaIdFromContext(prompt, context, history);
 
+    if (/^(hi|hello|hey|yo|gm|good morning|good afternoon|good evening)\b/i.test(prompt.trim())) {
+      return {
+        type: "help",
+        reason: "ArenaAgent online. Ask me to create an arena, inspect arena status, count players in an arena, close an arena, finalize an arena, or explain payouts.",
+      };
+    }
+
     if (lower.match(/how many arena|list arena|all arena|arenas (open|running|active|available|exist)|which arena|overview of arena/)) {
       return { type: "list_arenas" };
+    }
+
+    if (lower.includes("arena") && (lower.includes("how many players") || lower.includes("players in") || lower.includes("player count") || lower.includes("how many joined"))) {
+      return { type: "summarize_arena", arenaId: arenaIdFromContext };
     }
 
     // Score submission: "player 0x... scored X", "record score", "0x... got X goals"
@@ -341,7 +353,7 @@ export class OperatorService {
       return { type: "close_arena", arenaId: arenaIdFromContext };
     }
 
-    if (lower.includes("arena") && (lower.includes("status") || lower.includes("show") || lower.includes("inspect") || lower.includes("explain"))) {
+    if (lower.includes("arena") && (lower.includes("status") || lower.includes("show") || lower.includes("inspect") || lower.includes("explain") || lower.includes("summarize") || lower.includes("details"))) {
       return { type: "summarize_arena", arenaId: arenaIdFromContext };
     }
 

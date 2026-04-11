@@ -4,9 +4,13 @@
 import type * as agenticCompetitionEngineSol from "./AgenticCompetitionEngine.sol";
 export type { agenticCompetitionEngineSol };
 export type { MockERC20 } from "./MockERC20";
+export type { MockX402ERC20 } from "./MockX402ERC20";
 export * as factories from "./factories";
 export type { AgenticCompetitionEngine } from "./AgenticCompetitionEngine.sol/AgenticCompetitionEngine";
 export { AgenticCompetitionEngine__factory } from "./factories/AgenticCompetitionEngine.sol/AgenticCompetitionEngine__factory";
 export type { IERC20Minimal } from "./AgenticCompetitionEngine.sol/IERC20Minimal";
 export { IERC20Minimal__factory } from "./factories/AgenticCompetitionEngine.sol/IERC20Minimal__factory";
+export type { IERC20X402 } from "./AgenticCompetitionEngine.sol/IERC20X402";
+export { IERC20X402__factory } from "./factories/AgenticCompetitionEngine.sol/IERC20X402__factory";
 export { MockERC20__factory } from "./factories/MockERC20__factory";
+export { MockX402ERC20__factory } from "./factories/MockX402ERC20__factory";

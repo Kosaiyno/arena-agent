@@ -63,4 +63,55 @@ describe("AgenticCompetitionEngine", () => {
     expect(arena[2]).to.equal(1_000_000n);
     expect(arena[8]).to.equal(2n);
   });
+
+  it("joins ERC20 arenas via x402 authorization without standing allowance", async () => {
+    const { contract, alice } = await deployFixture();
+    const tokenFactory = await ethers.getContractFactory("MockX402ERC20");
+    const usdc = await tokenFactory.deploy("USD Coin", "USDC", 6);
+    await usdc.waitForDeployment();
+
+    const entryFee = 500_000n;
+    await usdc.mint(alice.address, 2_000_000n);
+
+    await contract.createArena(entryFee, 60, await usdc.getAddress());
+
+    const network = await ethers.provider.getNetwork();
+    const nonce = ethers.hexlify(ethers.randomBytes(32));
+    const validBefore = BigInt(Math.floor(Date.now() / 1000) + 300);
+    const authorization = {
+      from: alice.address,
+      to: await contract.getAddress(),
+      value: entryFee,
+      validAfter: 0,
+      validBefore,
+      nonce,
+    };
+
+    const signature = await alice.signTypedData(
+      {
+        name: "USD Coin",
+        version: "2",
+        chainId: network.chainId,
+        verifyingContract: await usdc.getAddress(),
+      },
+      {
+        TransferWithAuthorization: [
+          { name: "from", type: "address" },
+          { name: "to", type: "address" },
+          { name: "value", type: "uint256" },
+          { name: "validAfter", type: "uint256" },
+          { name: "validBefore", type: "uint256" },
+          { name: "nonce", type: "bytes32" },
+        ],
+      },
+      authorization,
+    );
+
+    await contract.joinArenaWithAuthorization(1, authorization, signature);
+
+    const arena = await contract.getArena(1);
+    expect(arena[2]).to.equal(entryFee);
+    expect(arena[8]).to.equal(1n);
+    expect(await usdc.balanceOf(await contract.getAddress())).to.equal(entryFee);
+  });
 });

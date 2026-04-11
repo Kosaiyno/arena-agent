@@ -252,6 +252,8 @@ export class RouteRecommendationService {
       return { provider: "no-provider", isDirect: true, requiresApproval: false, approvalTxs: [], swapTx: null, joinTx };
     }
 
+    // Try Uniswap first (preferred), OKX will be attempted as a fallback below
+
     const swapTx = await this.uniswapTradeService.buildSwapTransaction({ walletAddress, fromToken, toToken: settlementToken, amountInBaseUnits: fromAmountBaseUnits });
 
     if (swapTx) {

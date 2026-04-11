@@ -3,3 +3,4 @@
 /* eslint-disable */
 export type { AgenticCompetitionEngine } from "./AgenticCompetitionEngine";
 export type { IERC20Minimal } from "./IERC20Minimal";
+export type { IERC20X402 } from "./IERC20X402";

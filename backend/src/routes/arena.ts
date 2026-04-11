@@ -4,6 +4,8 @@ import { env } from "../config/env.js";
 import { WalletTokenBalance } from "../types/arena.js";
 import { ArenaViewService } from "../services/arenaViewService.js";
 import { ContractService } from "../services/contractService.js";
+import { OkxPortfolioService } from "../services/okxPortfolioService.js";
+import { OkxX402Service } from "../services/okxX402Service.js";
 import { RouteRecommendationService } from "../services/routeRecommendationService.js";
 import { ScoreService } from "../services/scoreService.js";
 import { StateStore } from "../services/stateStore.js";
@@ -30,58 +32,6 @@ function parseCustomTokens(value: unknown): Array<{ symbol: string; name: string
   ));
 }
 
-async function fetchOKLinkBalances(
-  address: string,
-  apiKey: string,
-  chainShortName: string,
-  getBalance: (addr: string) => Promise<bigint>,
-): Promise<WalletTokenBalance[]> {
-  const results: WalletTokenBalance[] = [];
-
-  // Native OKB via RPC
-  try {
-    const rawOkb = (await getBalance(address)).toString();
-    const fmtOkb = Number(formatUnits(rawOkb, 18));
-    results.push({
-      token: { symbol: "OKB", name: "OKB", address: null, decimals: 18, kind: "native" },
-      rawBalance: rawOkb,
-      formattedBalance: fmtOkb.toFixed(6),
-      estimatedValueInSettlement: fmtOkb,
-      canCoverEntry: true,
-    });
-  } catch { /* ignore */ }
-
-  // ERC20 tokens via OKLink
-  try {
-    const url = `https://www.oklink.com/api/v5/explorer/address/address-balance-token?chainShortName=${chainShortName}&address=${address}&limit=50`;
-    const resp = await fetch(url, { headers: { "OK-ACCESS-KEY": apiKey } });
-    const data = (await resp.json()) as {
-      code: string;
-      data?: Array<{ tokenList?: Array<{ token: string; symbol: string; tokenContractAddress: string; holdingAmount: string }> }>;
-    };
-    if (data.code === "0" && data.data?.[0]?.tokenList) {
-      for (const t of data.data[0].tokenList) {
-        const holding = parseFloat(t.holdingAmount ?? "0");
-        results.push({
-          token: {
-            symbol: t.symbol ?? t.token,
-            name: t.token ?? t.symbol,
-            address: t.tokenContractAddress ?? null,
-            decimals: 18,
-            kind: "erc20",
-          },
-          rawBalance: "0",
-          formattedBalance: holding.toFixed(6),
-          estimatedValueInSettlement: 0,
-          canCoverEntry: false,
-        });
-      }
-    }
-  } catch { /* ignore */ }
-
-  return results;
-}
-
 export function createArenaRouter(
   contractService: ContractService,
   arenaViewService: ArenaViewService,
@@ -89,6 +39,8 @@ export function createArenaRouter(
   walletInspectionService: WalletInspectionService,
   routeRecommendationService: RouteRecommendationService,
   stateStore: StateStore,
+  okxPortfolioService: OkxPortfolioService,
+  okxX402Service: OkxX402Service,
 ): Router {
   const router = Router();
 
@@ -285,12 +237,23 @@ export function createArenaRouter(
         return;
       }
 
-      const balances = await walletInspectionService.inspectWallet(user, arena, parseCustomTokens(customTokens));
-      const routes = await routeRecommendationService.getRecommendation(arena, user, balances);
+      const provider = contractService.getProvider();
+      const inspectedBalances = await walletInspectionService.inspectWallet(user, arena, parseCustomTokens(customTokens));
+      const portfolio = await okxPortfolioService.enrichBalances(
+        user,
+        inspectedBalances,
+        (address) => provider.getBalance(address),
+      );
+      const routes = await routeRecommendationService.getRecommendation(arena, user, portfolio.balances);
       response.json({
         arena,
         user,
-        balances,
+        balances: portfolio.balances,
+        portfolio: {
+          enabled: portfolio.enabled,
+          source: portfolio.source,
+          tokenCount: portfolio.tokenCount,
+        },
         recommendedRoute: routes.recommended,
         candidateRoutes: routes.candidates,
       });
@@ -310,10 +273,28 @@ export function createArenaRouter(
         return;
       }
 
-      const paymentProof = request.headers["x-payment-proof"];
+      const arena = await arenaViewService.getArena(arenaId);
+      if (arenaHasEnded(arena)) {
+        response.status(400).json({ error: "Arena has already ended. Joining is closed." });
+        return;
+      }
 
-      if (!paymentProof) {
-        const arena = await arenaViewService.getArena(arenaId);
+      const okxPayment = okxX402Service.parsePaymentHeaders(request.headers);
+      if (okxPayment?.authorization?.from && playerAlreadyJoined(arena, okxPayment.authorization.from)) {
+        response.status(400).json({ error: "You already joined this arena." });
+        return;
+      }
+
+      if (!okxPayment?.authorization || !okxPayment.signature) {
+        const okxChallenge = okxX402Service.buildChallenge({
+          arenaId,
+          entryFee: arena.entryFeeWei,
+          settlementToken: arena.settlementToken,
+          resourcePath: `/arena/${arenaId}/x402-join`,
+        });
+        if (okxChallenge.requiredHeaderValue) {
+          response.setHeader("PAYMENT-REQUIRED", okxChallenge.requiredHeaderValue);
+        }
         response.status(402).json({
           error: "Payment required",
           x402: true,
@@ -333,35 +314,64 @@ export function createArenaRouter(
               arenaId,
             },
           },
+          okxX402: okxChallenge,
         });
         return;
       }
 
-      const txHash = String(paymentProof);
-      const provider = contractService.getProvider();
-      const receipt = await provider.getTransactionReceipt(txHash);
-
-      if (!receipt) {
-        response.status(400).json({ error: "Transaction not found on chain" });
+      if (arena.settlementToken?.kind !== "erc20" || !arena.settlementToken.address) {
+        response.status(400).json({ error: "x402 entry is only available for ERC-20 arenas." });
         return;
       }
 
-      if (receipt.status !== 1) {
-        response.status(400).json({ error: "Transaction failed on chain" });
+      const payment = okxPayment;
+      const authorization = payment.authorization;
+      const signature = payment.signature;
+      if (!authorization) {
+        response.status(400).json({ error: "x402 authorization payload is incomplete." });
+        return;
+      }
+      if (!signature) {
+        response.status(400).json({ error: "x402 signature payload is missing." });
         return;
       }
 
-      if (receipt.to?.toLowerCase() !== env.contractAddress.toLowerCase()) {
-        response.status(400).json({ error: "Transaction was not sent to the arena contract" });
+      if (payment.network !== `eip155:${env.appChainId}`) {
+        response.status(400).json({ error: "x402 payment network does not match this arena." });
         return;
       }
+
+      if (payment.payTo?.toLowerCase() !== env.contractAddress.toLowerCase()) {
+        response.status(400).json({ error: "x402 payment recipient does not match the arena contract." });
+        return;
+      }
+
+      if (payment.asset?.toLowerCase() !== arena.settlementToken.address.toLowerCase()) {
+        response.status(400).json({ error: `x402 payment asset does not match ${arena.settlementToken.symbol}.` });
+        return;
+      }
+
+      if (payment.amount !== arena.entryFeeWei || authorization.value !== arena.entryFeeWei) {
+        response.status(400).json({ error: "x402 payment amount does not match the arena entry fee." });
+        return;
+      }
+
+      if (authorization.to.toLowerCase() !== env.contractAddress.toLowerCase()) {
+        response.status(400).json({ error: "x402 authorization destination does not match the arena contract." });
+        return;
+      }
+
+      await contractService.joinArenaWithAuthorization(arenaId, authorization, signature);
+      const updatedArena = await arenaViewService.getArena(arenaId);
 
       response.json({
         verified: true,
+        provider: "okx-x402-payment",
         arenaId,
-        player: receipt.from,
-        txHash,
-        message: `Payment verified. ${receipt.from} joined arena #${arenaId}.`,
+        player: authorization.from,
+        relayed: true,
+        settlementToken: updatedArena.settlementToken,
+        message: `x402 payment authorized and ${authorization.from} joined arena #${arenaId}.`,
       });
     } catch (error) {
       next(error);
@@ -413,17 +423,6 @@ export function createArenaRouter(
         response.status(400).json({ error: "Valid user address is required" });
         return;
       }
-        if (env.okLinkApiKey) {
-        const provider = contractService.getProvider();
-        const balances = await fetchOKLinkBalances(
-          user,
-          env.okLinkApiKey,
-          env.okLinkChainShortName,
-          (addr) => provider.getBalance(addr),
-        );
-        response.json({ user, balances });
-        return;
-      }
       const dummyArena = {
         id: 0,
         entryFeeWei: "0",
@@ -434,8 +433,59 @@ export function createArenaRouter(
         finalized: false,
         players: [] as string[],
       };
-      const balances = await walletInspectionService.inspectWallet(user, dummyArena);
-      response.json({ user, balances });
+      const provider = contractService.getProvider();
+      const inspectedBalances = await walletInspectionService.inspectWallet(user, dummyArena);
+      const portfolio = await okxPortfolioService.enrichBalances(
+        user,
+        inspectedBalances,
+        (address) => provider.getBalance(address),
+      );
+      response.json({
+        user,
+        balances: portfolio.balances,
+        portfolio: {
+          enabled: portfolio.enabled,
+          source: portfolio.source,
+          tokenCount: portfolio.tokenCount,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/wallet/portfolio", async (request: Request, response: Response, next: NextFunction) => {
+    try {
+      const user = String(request.query.user ?? "");
+      if (!user || !isAddress(user)) {
+        response.status(400).json({ error: "Valid user address is required" });
+        return;
+      }
+
+      const provider = contractService.getProvider();
+      const dummyArena = {
+        id: 0,
+        entryFeeWei: "0",
+        totalPoolWei: "0",
+        createdAt: 0,
+        endTime: 0,
+        closed: false,
+        finalized: false,
+        players: [] as string[],
+      };
+      const inspectedBalances = await walletInspectionService.inspectWallet(user, dummyArena);
+      const portfolio = await okxPortfolioService.enrichBalances(
+        user,
+        inspectedBalances,
+        (address) => provider.getBalance(address),
+      );
+      response.json({
+        user,
+        source: portfolio.source,
+        enabled: portfolio.enabled,
+        tokenCount: portfolio.tokenCount,
+        balances: portfolio.balances,
+      });
     } catch (error) {
       next(error);
     }

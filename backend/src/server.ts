@@ -9,6 +9,8 @@ import { ArenaViewService } from "./services/arenaViewService.js";
 import { ArenaMonitor } from "./services/arenaMonitor.js";
 import { ContractService } from "./services/contractService.js";
 import { OnchainOsService } from "./services/onchainOsService.js";
+import { OkxPortfolioService } from "./services/okxPortfolioService.js";
+import { OkxX402Service } from "./services/okxX402Service.js";
 import { OperatorService } from "./services/operatorService.js";
 import { RouteRecommendationService } from "./services/routeRecommendationService.js";
 import { ScoreService } from "./services/scoreService.js";
@@ -26,6 +28,8 @@ const scoreService = new ScoreService(stateStore);
 const walletInspectionService = new WalletInspectionService(contractService, tokenRegistry);
 const uniswapTradeService = new UniswapTradeService();
 const onchainOsService = new OnchainOsService();
+const okxPortfolioService = new OkxPortfolioService(tokenRegistry);
+const okxX402Service = new OkxX402Service();
 const routeRecommendationService = new RouteRecommendationService(tokenRegistry, uniswapTradeService, onchainOsService);
 const operatorService = new OperatorService(contractService, scoreService, stateStore, uniswapTradeService, onchainOsService);
 const arenaMonitor = new ArenaMonitor(contractService, scoreService, stateStore);
@@ -33,7 +37,7 @@ const agentWalletService = new AgentWalletService();
 
 app.use(cors());
 app.use(express.json());
-app.use(createArenaRouter(contractService, arenaViewService, scoreService, walletInspectionService, routeRecommendationService, stateStore));
+app.use(createArenaRouter(contractService, arenaViewService, scoreService, walletInspectionService, routeRecommendationService, stateStore, okxPortfolioService, okxX402Service));
 app.use(createOperatorRouter(operatorService));
 app.use(createAgentRouter(agentWalletService));
 

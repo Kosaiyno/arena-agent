@@ -2,6 +2,7 @@ export const contractAbi = [
   "function createArena(uint256 entryFee, uint256 duration, address entryToken) returns (uint256)",
   "function joinArena(uint256 arenaId) payable",
   "function joinArenaFor(uint256 arenaId, address player)",
+  "function joinArenaWithAuthorization(uint256 arenaId, (address from, address to, uint256 value, uint256 validAfter, uint256 validBefore, bytes32 nonce) authorization, bytes signature)",
   "function submitScore(uint256 arenaId, address player, uint256 score)",
   "function closeArena(uint256 arenaId)",
   "function finalizeArena(uint256 arenaId, address[] winners, uint256[] percentages)",

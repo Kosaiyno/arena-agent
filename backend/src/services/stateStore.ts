@@ -11,6 +11,7 @@ export type ArenaMeta = {
 };
 
 type PersistedState = {
+  contractAddress: string;
   scores: Record<string, Record<string, ScoreEntry>>;
   operatorEvents: OperatorEvent[];
   arenaConfigs: Record<string, { settlementTokenSymbol: string }>;
@@ -18,6 +19,7 @@ type PersistedState = {
 };
 
 const emptyState = (): PersistedState => ({
+  contractAddress: env.contractAddress.toLowerCase(),
   scores: {},
   operatorEvents: [],
   arenaConfigs: {},
@@ -96,7 +98,15 @@ export class StateStore {
     try {
       const raw = readFileSync(this.filePath, "utf8");
       const parsed = JSON.parse(raw) as Partial<PersistedState>;
+      const currentContractAddress = env.contractAddress.toLowerCase();
+      if ((parsed.contractAddress ?? "").toLowerCase() !== currentContractAddress) {
+        const initial = emptyState();
+        writeFileSync(this.filePath, JSON.stringify(initial, null, 2));
+        return initial;
+      }
+
       return {
+        contractAddress: currentContractAddress,
         scores: parsed.scores ?? {},
         operatorEvents: parsed.operatorEvents ?? [],
         arenaConfigs: parsed.arenaConfigs ?? {},

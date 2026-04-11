@@ -4,7 +4,7 @@
 
 ArenaAgent turns competitions into autonomous on-chain economic systems, where entry, participation, and payouts are fully managed by an AI agent.
 
-ArenaAgent is an autonomous on-chain competition operator deployed on X Layer. It can create, manage, and settle competitive environments without human intervention. An on-chain operator wallet (Agentic Wallet) manages the full lifecycle of paid competitive arenas: creation → join → play → score → rank → reward settlement. Players can enter arenas using any supported token, the agent evaluates and recommends available funding paths using live routing integrations, and entry verification can use the x402 payment protocol for machine-to-machine proof-of-payment.
+ArenaAgent is an autonomous on-chain competition operator deployed on X Layer. It can create, manage, and settle competitive environments without human intervention. An on-chain operator wallet (Agentic Wallet) manages the full lifecycle of paid competitive arenas: creation → join → play → score → rank → reward settlement. Players can enter arenas using any supported token. The agent evaluates wallet balances and recommends funding paths using live routing integrations, and entry verification is supported via the x402 payment protocol for machine-to-machine proof-of-payment.
 
 ## Why ArenaAgent Matters
 
@@ -56,7 +56,6 @@ ArenaAgent:
 - evaluates how each player can fund entry
 - routes tokens into the correct settlement asset
 - records scores from an external results source
-- finalizes the winner on-chain
 - finalizes the winner on-chain and executes payout, with fallback claim support if needed
 
 ---
@@ -398,6 +397,28 @@ The fastest way to verify the plug-and-play integration flow is:
 5. Ask ArenaAgent who is leading or who won.
 
 That proves:
+
+- agent orchestration
+- routing logic
+- onchain settlement
+- end-to-end competition lifecycle
+
+---
+
+## Recent Changes (x402 Join & Routing Update)
+
+- **x402 authorization join**: Replaced the standing-approval join flow with an atomic x402-style authorization path. The contract now exposes `joinArenaWithAuthorization(...)` and the backend accepts x402 payloads at `POST /arena/:id/x402-join` for server-side verification and settlement.
+- **Routing preference change**: The routing layer now prefers Uniswap (`uniswap-trading-api`) first and falls back to OKX DEX aggregator (`okx-dex-aggregator`) only when Uniswap cannot provide a usable quote. This reduces unnecessary OKX calls and ensures consistent Uniswap-first UX.
+- **Files updated**:
+    - `backend/src/services/routeRecommendationService.ts` — prefer Uniswap and treat OKX as fallback; try Uniswap-first swap quote flow in both recommendation and swap-and-join plan building.
+    - `backend/src/services/onchainOsService.ts` — OKX Onchain OS wrapper (unchanged for usage; used as fallback).
+    - `backend/.env` — `PREFER_OKX_SWAP` now set to `false` by default in the repository; enable OKX explicitly if you want to prefer it.
+    - `contracts/` — added `joinArenaWithAuthorization` and a `MockX402ERC20` used in tests.
+    - `frontend/src/lib/contract.ts` & `frontend/src/App.tsx` — wallet x402 signing helper and UI flow updates to use x402 authorization flows.
+- **Tests**: Added Hardhat tests for the x402 path using a mock token. Run `npx hardhat test` inside `contracts/` to validate.
+- **How to roll back or switch behavior**: If you want to prefer OKX again, set `PREFER_OKX_SWAP=true` in `backend/.env` (not recommended for the default demo UX).
+
+If you'd like, I can also produce a short changelog file summarizing these edits or update any other docs with step-by-step examples for the x402 flow.
 
 - agent orchestration
 - reusable integration surface

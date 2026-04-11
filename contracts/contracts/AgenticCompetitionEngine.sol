@@ -6,7 +6,30 @@ interface IERC20Minimal {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
 }
 
+interface IERC20X402 {
+    function transferWithAuthorization(
+        address from,
+        address to,
+        uint256 value,
+        uint256 validAfter,
+        uint256 validBefore,
+        bytes32 nonce,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external;
+}
+
 contract AgenticCompetitionEngine {
+    struct TransferAuthorization {
+        address from;
+        address to;
+        uint256 value;
+        uint256 validAfter;
+        uint256 validBefore;
+        bytes32 nonce;
+    }
+
     struct Arena {
         uint256 id;
         uint256 entryFee;
@@ -37,6 +60,7 @@ contract AgenticCompetitionEngine {
     event RewardPaid(uint256 indexed arenaId, address indexed player, uint256 amount);
     event RewardStored(uint256 indexed arenaId, address indexed player, uint256 amount);
     event RewardClaimed(uint256 indexed arenaId, address indexed player, uint256 amount);
+    event ArenaJoinedWithAuthorization(uint256 indexed arenaId, address indexed player, bytes32 indexed nonce, uint256 totalPool);
 
     error OnlyOperator();
     error ArenaMissing();
@@ -52,6 +76,8 @@ contract AgenticCompetitionEngine {
     error AlreadyJoined();
     error TokenTransferFailed();
     error InvalidJoinMethod();
+    error InvalidAuthorization();
+    error InvalidSignature();
 
     modifier onlyOperator() {
         if (msg.sender != operator) revert OnlyOperator();
@@ -108,6 +134,40 @@ contract AgenticCompetitionEngine {
         arena.players.push(player);
         arena.totalPool += arena.entryFee;
         emit ArenaJoined(arenaId, player, arena.totalPool);
+    }
+
+    function joinArenaWithAuthorization(
+        uint256 arenaId,
+        TransferAuthorization calldata authorization,
+        bytes calldata signature
+    ) external onlyOperator existingArena(arenaId) {
+        Arena storage arena = arenas[arenaId];
+        if (arena.closed || block.timestamp >= arena.endTime) revert ArenaClosedAlready();
+        if (arena.entryToken == address(0)) revert InvalidJoinMethod();
+        if (hasJoined[arenaId][authorization.from]) revert AlreadyJoined();
+        if (authorization.to != address(this)) revert InvalidAuthorization();
+        if (authorization.value != arena.entryFee) revert WrongEntryFee();
+        if (block.timestamp < authorization.validAfter || block.timestamp > authorization.validBefore) revert InvalidAuthorization();
+
+        (uint8 v, bytes32 r, bytes32 s) = _splitSignature(signature);
+        IERC20X402(arena.entryToken).transferWithAuthorization(
+            authorization.from,
+            authorization.to,
+            authorization.value,
+            authorization.validAfter,
+            authorization.validBefore,
+            authorization.nonce,
+            v,
+            r,
+            s
+        );
+
+        hasJoined[arenaId][authorization.from] = true;
+        arena.players.push(authorization.from);
+        arena.totalPool += arena.entryFee;
+
+        emit ArenaJoined(arenaId, authorization.from, arena.totalPool);
+        emit ArenaJoinedWithAuthorization(arenaId, authorization.from, authorization.nonce, arena.totalPool);
     }
 
     function submitScore(uint256 arenaId, address player, uint256 score) external onlyOperator existingArena(arenaId) {
@@ -232,5 +292,20 @@ contract AgenticCompetitionEngine {
             return success;
         }
         return IERC20Minimal(entryToken).transfer(recipient, amount);
+    }
+
+    function _splitSignature(bytes calldata signature) private pure returns (uint8 v, bytes32 r, bytes32 s) {
+        if (signature.length != 65) revert InvalidSignature();
+
+        assembly {
+            r := calldataload(signature.offset)
+            s := calldataload(add(signature.offset, 32))
+            v := byte(0, calldataload(add(signature.offset, 64)))
+        }
+
+        if (v < 27) {
+            v += 27;
+        }
+        if (v != 27 && v != 28) revert InvalidSignature();
     }
 }

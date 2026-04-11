@@ -3,3 +3,4 @@
 /* eslint-disable */
 export { AgenticCompetitionEngine__factory } from "./AgenticCompetitionEngine__factory";
 export { IERC20Minimal__factory } from "./IERC20Minimal__factory";
+export { IERC20X402__factory } from "./IERC20X402__factory";

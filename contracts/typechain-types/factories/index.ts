@@ -3,3 +3,4 @@
 /* eslint-disable */
 export * as agenticCompetitionEngineSol from "./AgenticCompetitionEngine.sol";
 export { MockERC20__factory } from "./MockERC20__factory";
+export { MockX402ERC20__factory } from "./MockX402ERC20__factory";

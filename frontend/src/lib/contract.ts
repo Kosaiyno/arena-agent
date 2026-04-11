@@ -1,5 +1,29 @@
 import { BrowserProvider, Contract, Eip1193Provider, MaxUint256, formatUnits, Interface } from "ethers";
 
+type X402AcceptedOption = {
+  scheme: "exact";
+  network: string;
+  amount: string;
+  payTo: string;
+  asset: string;
+  maxTimeoutSeconds: number;
+  extra: {
+    name: string;
+    version: string;
+    arenaId: number;
+  };
+};
+
+type X402Challenge = {
+  x402Version?: number;
+  resource?: {
+    url: string;
+    description: string;
+    mimeType: string;
+  };
+  accepts?: X402AcceptedOption[];
+};
+
 type SwapTxData = { to: string; data: string; value: string };
 
 type SwapAndJoinPlan = {
@@ -254,4 +278,61 @@ export async function approveToken(tokenAddress: string, spender: string, onStep
   const tx = await contract.approve(spender, MaxUint256);
   onStep?.("Approval submitted. Waiting for confirmation...");
   await tx.wait();
+}
+
+export async function signX402ExactPayment(challenge: X402Challenge, onStep?: (step: string) => void): Promise<string> {
+  const accepted = challenge.accepts?.find((option) => option.scheme === "exact") ?? challenge.accepts?.[0];
+  if (!accepted) {
+    throw new Error("No x402 payment option is available for this arena.");
+  }
+
+  const provider = await ensureCorrectNetwork();
+  await provider.send("eth_requestAccounts", []);
+  const signer = await provider.getSigner();
+  const from = await signer.getAddress();
+  const chainId = Number(accepted.network.replace(/^eip155:/, ""));
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const nonceBytes = crypto.getRandomValues(new Uint8Array(32));
+  const nonce = `0x${Array.from(nonceBytes, (value) => value.toString(16).padStart(2, "0")).join("")}`;
+  const authorization = {
+    from,
+    to: accepted.payTo,
+    value: accepted.amount,
+    validAfter: "0",
+    validBefore: String(nowSeconds + accepted.maxTimeoutSeconds),
+    nonce,
+  };
+
+  onStep?.("Sign the x402 authorization in your wallet...");
+  const signature = await signer.signTypedData(
+    {
+      name: accepted.extra?.name ?? "ArenaAgent Entry",
+      version: accepted.extra?.version ?? "2",
+      chainId,
+      verifyingContract: accepted.asset,
+    },
+    {
+      TransferWithAuthorization: [
+        { name: "from", type: "address" },
+        { name: "to", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "validAfter", type: "uint256" },
+        { name: "validBefore", type: "uint256" },
+        { name: "nonce", type: "bytes32" },
+      ],
+    },
+    authorization,
+  );
+
+  const payload = {
+    x402Version: challenge.x402Version ?? 2,
+    resource: challenge.resource,
+    accepted,
+    payload: {
+      signature,
+      authorization,
+    },
+  };
+
+  return btoa(JSON.stringify(payload));
 }

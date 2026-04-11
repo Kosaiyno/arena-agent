@@ -19,12 +19,14 @@ import {
   getLeaderboard,
   getOperatorHistory,
   getOperatorStatus,
+  getX402Requirements,
   getWalletBalances,
   listArenas,
   prepareJoin,
+  submitX402Payment,
   submitScore,
 } from "./lib/api";
-import { approveToken, claimReward, CustomTokenBalance, executeSwapAndJoin, executeSwapOnly, fetchCustomTokenBalance, getConnectedAddress, getFallbackReward, getTokenAllowance, joinArenaWithWallet, loadCustomTokenAddresses, saveCustomTokenAddress } from "./lib/contract";
+import { claimReward, CustomTokenBalance, executeSwapAndJoin, executeSwapOnly, fetchCustomTokenBalance, getConnectedAddress, getFallbackReward, joinArenaWithWallet, loadCustomTokenAddresses, saveCustomTokenAddress, signX402ExactPayment } from "./lib/contract";
 
 const DEFAULT_CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS ?? "";
 
@@ -160,18 +162,29 @@ function mapOperatorEvent(event: OperatorEvent): ArenaFeedItem | null {
 function providerLabel(provider: string): string {
   switch (provider) {
     case "uniswap-trading-api":
-      return "Uniswap routing";
+      return "Uniswap";
     case "okx-dex-aggregator":
-      return "OKX DEX routing";
+      return "OKX";
     case "wallet":
-      return "your wallet";
+      return "Wallet";
     case "direct":
-      return "a direct join path";
+      return "Direct";
     case "insufficient-balance":
-      return "the current wallet balances";
+      return "Insufficient Balance";
     default:
       return provider;
   }
+}
+
+function formatGasUsd(value?: string): string | null {
+  if (!value) return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  if (numeric === 0) return "$0";
+  if (numeric < 0.001) return "<$0.001";
+  if (numeric < 0.01) return `$${numeric.toFixed(4)}`;
+  if (numeric < 1) return `$${numeric.toFixed(3)}`;
+  return `$${numeric.toFixed(2)}`;
 }
 
 function settlementTokenLabel(arena: Arena): string {
@@ -273,20 +286,8 @@ export default function App() {
       setRouteLoading(false);
     }
 
-    if (!DEFAULT_CONTRACT_ADDRESS || arena.settlementToken?.kind !== "erc20" || !arena.settlementToken.address) {
-      setAllowanceReady(true);
-      setAllowanceLoading(false);
-    } else {
-      setAllowanceLoading(true);
-      try {
-        const allowance = await getTokenAllowance(arena.settlementToken.address, user, DEFAULT_CONTRACT_ADDRESS);
-        setAllowanceReady(allowance >= BigInt(arena.entryFeeWei));
-      } catch {
-        setAllowanceReady(false);
-      } finally {
-        setAllowanceLoading(false);
-      }
-    }
+    setAllowanceReady(true);
+    setAllowanceLoading(false);
 
     if (profileOpen) {
       try {
@@ -299,39 +300,7 @@ export default function App() {
   }
 
   async function warmupArenaApprovals(address: string): Promise<void> {
-    if (!DEFAULT_CONTRACT_ADDRESS) {
-      return;
-    }
-
-    const liveSettlementTokens = new Map<string, Arena["settlementToken"]>();
-    for (const arena of arenas) {
-      const arenaEnded = arena.closed || arena.finalized || arena.endTime <= Math.floor(Date.now() / 1000);
-      if (arenaEnded || arena.settlementToken?.kind !== "erc20" || !arena.settlementToken.address) {
-        continue;
-      }
-      liveSettlementTokens.set(arena.settlementToken.address.toLowerCase(), arena.settlementToken);
-    }
-
-    for (const token of liveSettlementTokens.values()) {
-      if (!token?.address) continue;
-
-      const tokenArenas = arenas.filter((arena) => arena.settlementToken?.address?.toLowerCase() === token.address?.toLowerCase());
-      const maxRequiredAllowance = tokenArenas.reduce((max, arena) => {
-        const next = BigInt(arena.entryFeeWei);
-        return next > max ? next : max;
-      }, 0n);
-
-      try {
-        const allowance = await getTokenAllowance(token.address, address, DEFAULT_CONTRACT_ADDRESS);
-        if (allowance >= maxRequiredAllowance) {
-          continue;
-        }
-      } catch {
-        // Fall through to try approval.
-      }
-
-      await approveToken(token.address, DEFAULT_CONTRACT_ADDRESS, setJoinStep);
-    }
+    void address;
   }
 
   function countLiveErc20Arenas(sourceArenas: Arena[]): number {
@@ -805,15 +774,15 @@ export default function App() {
     connectApprovalWarmupRef.current = warmupKey;
     void warmupArenaApprovals(walletAddress)
       .then(() => {
-        setStatusMsg("Wallet connected. Arena entry approvals are ready.");
+        setStatusMsg("Wallet connected. x402 entry is ready.");
         upsertPersonalActivityItem("wallet-approval-warmup", -1, {
-          title: "Approval readiness checked",
-          detail: "I evaluated live ERC20 arenas and verified whether reusable approvals are already in place for future entries.",
+          title: "x402 entry ready",
+          detail: "I evaluated live ERC20 arenas and confirmed that future joins will use one-time x402 authorizations instead of reusable token approvals.",
           tone: "success",
         });
       })
       .catch((error) => {
-        const message = error instanceof Error ? error.message : "Approval warmup was skipped.";
+        const message = error instanceof Error ? error.message : "x402 warmup was skipped.";
         setStatusMsg(message);
       })
       .finally(() => setJoinStep(""));
@@ -860,66 +829,22 @@ export default function App() {
       personalApprovalNarrationRef.current = "";
       return;
     }
-    setAllowanceLoading(true);
-    void getTokenAllowance(selectedArena.settlementToken.address, walletAddress, DEFAULT_CONTRACT_ADDRESS)
-      .then((allowance) => {
-        const isReady = allowance >= BigInt(selectedArena.entryFeeWei);
-        setAllowanceReady(isReady);
-        if (!isReady) {
-          const approvalKey = `${selectedArena.id}:${selectedArena.entryFeeWei}`;
-          if (personalApprovalNarrationRef.current !== approvalKey) {
-            personalApprovalNarrationRef.current = approvalKey;
-            upsertPersonalActivityItem(`approval-${selectedArena.id}`, selectedArena.id, {
-              title: "Approval required",
-              detail: `Approval required — a viable route exists for ${arenaLabelFor(selectedArena.id)}, but I still need one-time ${settlementTokenLabel(selectedArena)} permission before I can relay the entry.`,
-              tone: "warning",
-            });
-          }
-        } else {
-          personalApprovalNarrationRef.current = "";
-        }
-      })
-      .catch(() => setAllowanceReady(false))
-      .finally(() => setAllowanceLoading(false));
+    setAllowanceReady(true);
+    setAllowanceLoading(false);
+    personalApprovalNarrationRef.current = "";
   }, [walletAddress, selectedArenaId, arenas]);
 
-  async function handleApprove(arena: Arena) {
-    if (!arena.settlementToken?.address) return;
-    try {
-      upsertArenaFeedItem(arena.id, "approval-flow", {
-        title: "Approval requested",
-        detail: `Approval requested — I selected a relayed ${arena.settlementToken.symbol} entry path for ${arenaLabelFor(arena.id)}, so I need one-time permission before I can move funds on your behalf.`,
-        tone: "live",
-      });
-      setJoinStep(`Approve ${arena.settlementToken.symbol} once...`);
-      setJoiningArenaId(arena.id);
-      await approveToken(arena.settlementToken.address, DEFAULT_CONTRACT_ADDRESS, setJoinStep);
-      setAllowanceReady(true);
-      if (walletAddress) {
-        await refreshJoinState(arena, walletAddress);
-      }
-      setJoinStep("Approval confirmed.");
-      upsertArenaFeedItem(arena.id, "approval-flow", {
-        title: "Approval confirmed",
-        detail: `Approval confirmed — ${arena.settlementToken.symbol} can now be used for relayed entry, so I can move straight into join execution when the route is ready.`,
-        tone: "success",
-      });
-      setStatusMsg(`${arena.settlementToken.symbol} approval confirmed. This did not join the arena. If you already hold ${arena.settlementToken.symbol}, tap Join. Otherwise swap into ${arena.settlementToken.symbol} first.`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Approval failed";
-      setJoinStep(message);
-      upsertArenaFeedItem(arena.id, "approval-flow", {
-        title: "Approval failed",
-        detail: message,
-        tone: "warning",
-      });
-      setStatusMsg(message);
-    } finally {
-      window.setTimeout(() => {
-        setJoinStep("");
-        setJoiningArenaId(null);
-      }, 1500);
+  async function completeX402Join(arena: Arena): Promise<void> {
+    setJoinStep("Requesting x402 payment requirements...");
+    const requirements = await getX402Requirements(arena.id);
+    const challenge = requirements.okxX402;
+    if (!challenge?.supported || !challenge.accepts?.length) {
+      throw new Error(challenge?.reason ?? "x402 is not available for this arena.");
     }
+
+    const headerValue = await signX402ExactPayment(challenge, setJoinStep);
+    setJoinStep("Submitting x402 payment...");
+    await submitX402Payment(arena.id, headerValue);
   }
 
   // Auto-refresh every 30s
@@ -962,7 +887,7 @@ export default function App() {
       setScoreForm((c) => ({ ...c, user: address }));
       upsertPersonalActivityItem("wallet-status", -1, {
         title: "Wallet connected",
-        detail: `Wallet connected — I can now inspect balances, determine routes, request approvals, and guide entries for ${truncate(address)}.`,
+        detail: `Wallet connected — I can now inspect balances, determine routes, and guide x402-authorized entries for ${truncate(address)}.`,
         tone: "success",
       });
       const liveErc20ArenaCount = countLiveErc20Arenas(nextArenas);
@@ -973,9 +898,9 @@ export default function App() {
 
       const warmupKey = `${address.toLowerCase()}:${liveErc20ArenaCount}`;
       connectApprovalWarmupRef.current = warmupKey;
-      setStatusMsg("Connected: " + address + ". Preparing arena approvals...");
+      setStatusMsg("Connected: " + address + ". Preparing x402 entry flow...");
       await warmupArenaApprovals(address);
-      setStatusMsg("Wallet connected. Arena entry approvals are ready.");
+      setStatusMsg("Wallet connected. x402 entry is ready.");
       setJoinStep("");
     } catch (error) {
       setStatusMsg(error instanceof Error ? error.message : "Failed to connect wallet");
@@ -1065,18 +990,18 @@ export default function App() {
     try {
       upsertArenaFeedItem(arena.id, "join-flow", {
         title: "Joining arena",
-        detail: `Joining ${arenaLabelFor(arena.id)} — I am validating wallet balance, route availability, and whether the entry can be relayed directly.`,
+        detail: `Joining ${arenaLabelFor(arena.id)} — I am validating wallet balance, route availability, and whether the entry can be completed directly or through x402 authorization.`,
         tone: "live",
       });
       if (activeRoute?.routeType === "swap_then_join") {
         if (arena.settlementToken?.kind === "erc20") {
-          setJoinStep(`Swap into ${arena.settlementToken.symbol} in your wallet first, then ArenaAgent will relay the join.`);
+          setJoinStep(`Swap into ${arena.settlementToken.symbol} first, then ArenaAgent will request x402 authorization to finalize the join.`);
           upsertArenaFeedItem(arena.id, "join-flow", {
             title: "Join paused",
-            detail: `Join paused — I determined that ${activeRoute.fromToken.symbol} should be converted into ${arena.settlementToken.symbol}, but the relayed join still requires the settlement token to land in your wallet first.`,
+            detail: `Join paused — I determined that ${activeRoute.fromToken.symbol} should be converted into ${arena.settlementToken.symbol}, and the x402 authorization can only happen after the settlement token lands in your wallet.`,
             tone: "warning",
           });
-          setStatusMsg(`Auto-swapped relayed joins for ${arena.settlementToken.symbol} are not wired yet. Swap first, then join again.`);
+          setStatusMsg(`Swap into ${arena.settlementToken.symbol} first, then join again to authorize the x402 payment.`);
           return;
         }
         upsertArenaFeedItem(arena.id, "join-flow", {
@@ -1109,17 +1034,18 @@ export default function App() {
           detail: `Joining ${arenaLabelFor(arena.id)} — direct route available because sufficient ${settlementTokenLabel(arena)} balance was detected in your wallet.`,
           tone: "live",
         });
-        setJoinStep("Preparing transaction...");
-        const join = await prepareJoin(arena.id, walletAddress);
-        if (join.relayed) {
-          setJoinStep("Agent joined you automatically.");
+        if (arena.settlementToken?.kind === "erc20") {
+          await completeX402Join(arena);
+          setJoinStep("Joined successfully.");
           upsertArenaFeedItem(arena.id, "join-flow", {
             title: "Join completed",
-            detail: `Join completed — the relayed ${arena.settlementToken?.symbol ?? "entry token"} entry was submitted and your participation in ${arenaLabelFor(arena.id)} is confirmed.`,
+            detail: `Join completed — your wallet signed a one-time x402 authorization and ArenaAgent finalized your ${arena.settlementToken.symbol} entry into ${arenaLabelFor(arena.id)}.`,
             tone: "success",
           });
-          setStatusMsg("Joined arena #" + arena.id + " via relayer.");
+          setStatusMsg("Joined arena #" + arena.id + " via x402.");
         } else {
+          setJoinStep("Preparing transaction...");
+          const join = await prepareJoin(arena.id, walletAddress);
           const contractAddress = join.contractAddress || DEFAULT_CONTRACT_ADDRESS;
           setJoinStep("Waiting for wallet confirmation...");
           await joinArenaWithWallet(contractAddress, arena.id, join.entryFeeWei ?? arena.entryFeeWei, setJoinStep);
@@ -1212,23 +1138,34 @@ export default function App() {
       await refreshJoinState(arena, walletAddress);
       setJoinStep("Finalizing arena join...");
 
-      const join = await prepareJoin(arena.id, walletAddress);
-      if (join.relayed) {
+      if (arena.settlementToken?.kind === "erc20") {
+        await completeX402Join(arena);
         setJoinStep("Joined successfully.");
         upsertArenaFeedItem(arena.id, "swap-flow", {
           title: "Swap and join complete",
-          detail: `Swap and join complete — I converted into the settlement token, verified the balance, and relayed your final entry into ${arenaLabelFor(arena.id)}.`,
+          detail: `Swap and join complete — I converted into ${arena.settlementToken.symbol}, then finalized entry into ${arenaLabelFor(arena.id)} with a one-time x402 authorization.`,
           tone: "success",
         });
-        setStatusMsg(`Swap complete and joined arena #${arena.id}.`);
+        setStatusMsg(`Swap complete and joined arena #${arena.id} via x402.`);
       } else {
-        setJoinStep(`${arena.settlementToken?.symbol ?? "Settlement token"} received.`);
-        upsertArenaFeedItem(arena.id, "swap-flow", {
-          title: "Awaiting final join",
-          detail: `Awaiting final join — ${arena.settlementToken?.symbol ?? "Settlement token"} is now in your wallet, but I still need your final join action to complete entry.`,
-          tone: "warning",
-        });
-        setStatusMsg(`Swap complete. If you now hold enough ${arena.settlementToken?.symbol ?? "tokens"}, tap Join to finish entering arena #${arena.id}.`);
+        const join = await prepareJoin(arena.id, walletAddress);
+        if (join.relayed) {
+          setJoinStep("Joined successfully.");
+          upsertArenaFeedItem(arena.id, "swap-flow", {
+            title: "Swap and join complete",
+            detail: `Swap and join complete — I converted into the settlement token, verified the balance, and relayed your final entry into ${arenaLabelFor(arena.id)}.`,
+            tone: "success",
+          });
+          setStatusMsg(`Swap complete and joined arena #${arena.id}.`);
+        } else {
+          setJoinStep(`${arena.settlementToken?.symbol ?? "Settlement token"} received.`);
+          upsertArenaFeedItem(arena.id, "swap-flow", {
+            title: "Awaiting final join",
+            detail: `Awaiting final join — ${arena.settlementToken?.symbol ?? "Settlement token"} is now in your wallet, but I still need your final join action to complete entry.`,
+            tone: "warning",
+          });
+          setStatusMsg(`Swap complete. If you now hold enough ${arena.settlementToken?.symbol ?? "tokens"}, tap Join to finish entering arena #${arena.id}.`);
+        }
       }
       await refreshArenas(arena.id);
     } catch (error) {
@@ -1362,12 +1299,12 @@ export default function App() {
     const activeRoute = shouldChooseSwapSource
       ? (selectedSwapSourceSymbol ? swapChoices.find((route) => route.fromToken.symbol === selectedSwapSourceSymbol) ?? null : null)
       : recommendedRoute;
-    const needsApproval = Boolean(walletAddress) && arena.settlementToken?.kind === "erc20" && !allowanceReady;
+    const needsApproval = false;
     const hasSwapChoices = swapChoices.length > 0;
     const hasDirectRoute = recommendedRoute?.routeType === "direct_join";
     const needsManualSwapFirst = Boolean(walletAddress)
       && arena.settlementToken?.kind === "erc20"
-      && allowanceReady
+      && true
       && !hasDirectRoute
       && hasSwapChoices;
     const swapRouteUnavailable = needsManualSwapFirst
@@ -1483,15 +1420,15 @@ export default function App() {
                 ) : needsApproval ? (
                   <>
                     <p className="route-hint-text">
-                      Approve {tokenSymbol} once. After that, ArenaAgent can relay joins for this token without another join signature.
+                      x402 mode is active. ArenaAgent will request a one-time payment authorization when you join.
                     </p>
                     <button
                       type="button"
                       className="btn-primary btn-join"
-                      onClick={() => void handleApprove(arena)}
-                      disabled={allowanceLoading || (joiningArenaId === arena.id && Boolean(joinStep))}
+                      onClick={() => void handleJoin(arena)}
+                      disabled={routeLoading || (joiningArenaId === arena.id && Boolean(joinStep))}
                     >
-                      {joiningArenaId === arena.id && joinStep ? joinStep : `Approve ${tokenSymbol}`}
+                      {joiningArenaId === arena.id && joinStep ? joinStep : `Join via x402 · ${fmtTokenAmount(arena.entryFeeWei, tokenDecimals, tokenSymbol)}`}
                     </button>
                   </>
                 ) : needsManualSwapFirst ? (
@@ -1523,9 +1460,9 @@ export default function App() {
                       <div className="route-info route-info--swap">
                         <div className="route-info-header">
                           <span className="route-badge">{routeBadgeLabel}</span>
-                          <span className="route-provider">via {activeRoute.provider}</span>
-                          {activeRoute.gasFeeUsd && (
-                            <span className="route-gas">est. gas ${activeRoute.gasFeeUsd}</span>
+                          <span className="route-provider">via {providerLabel(activeRoute.provider)}</span>
+                          {formatGasUsd(activeRoute.gasFeeUsd) && (
+                            <span className="route-gas">est. gas {formatGasUsd(activeRoute.gasFeeUsd)}</span>
                           )}
                         </div>
                         <p className="route-explanation">{activeRoute.explanation}</p>
@@ -1540,12 +1477,12 @@ export default function App() {
                     )}
                     <p className="route-hint-text">
                       {shouldChooseSwapSource && !selectedSwapSourceSymbol
-                        ? `Choose which token you want ArenaAgent to swap into ${tokenSymbol}. After you select it and confirm the required wallet transactions, ArenaAgent will verify your ${tokenSymbol} balance and relay the join automatically.`
+                        ? `Choose which token you want ArenaAgent to swap into ${tokenSymbol}. After the swap, ArenaAgent will request a one-time x402 authorization to finalize the join.`
                         : swapRouteUnavailable
                           ? activeRoute?.provider === "insufficient-balance"
                             ? (activeRoute?.explanation ?? `Your wallet does not hold enough ${activeRoute?.fromToken.symbol ?? "source token"} for this route.`)
                             : `Your wallet approved ${tokenSymbol}, but the current X Layer setup does not currently have a live ${activeRoute?.fromToken.symbol ?? "source token"} to ${tokenSymbol} swap route. This arena will only work if your wallet already holds ${tokenSymbol}.`
-                          : `After your approval and swap are confirmed, ArenaAgent will verify your ${tokenSymbol} balance and relay the join automatically.`}
+                          : `After your swap is confirmed, ArenaAgent will request a one-time x402 authorization and finalize the join automatically.`}
                     </p>
                     <button
                       type="button"
@@ -1582,9 +1519,9 @@ export default function App() {
                       }>
                         <div className="route-info-header">
                           <span className="route-badge">{routeBadgeLabel}</span>
-                          <span className="route-provider">via {activeRoute.provider}</span>
-                          {activeRoute.gasFeeUsd && (
-                            <span className="route-gas">est. gas ${activeRoute.gasFeeUsd}</span>
+                          <span className="route-provider">via {providerLabel(activeRoute.provider)}</span>
+                          {formatGasUsd(activeRoute.gasFeeUsd) && (
+                            <span className="route-gas">est. gas {formatGasUsd(activeRoute.gasFeeUsd)}</span>
                           )}
                         </div>
                         <p className="route-explanation">{activeRoute.explanation}</p>

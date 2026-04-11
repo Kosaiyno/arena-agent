@@ -23,6 +23,33 @@ import type {
   TypedContractMethod,
 } from "../common";
 
+export declare namespace AgenticCompetitionEngine {
+  export type TransferAuthorizationStruct = {
+    from: AddressLike;
+    to: AddressLike;
+    value: BigNumberish;
+    validAfter: BigNumberish;
+    validBefore: BigNumberish;
+    nonce: BytesLike;
+  };
+
+  export type TransferAuthorizationStructOutput = [
+    from: string,
+    to: string,
+    value: bigint,
+    validAfter: bigint,
+    validBefore: bigint,
+    nonce: string
+  ] & {
+    from: string;
+    to: string;
+    value: bigint;
+    validAfter: bigint;
+    validBefore: bigint;
+    nonce: string;
+  };
+}
+
 export interface AgenticCompetitionEngineInterface extends Interface {
   getFunction(
     nameOrSignature:
@@ -39,6 +66,7 @@ export interface AgenticCompetitionEngineInterface extends Interface {
       | "hasJoined"
       | "joinArena"
       | "joinArenaFor"
+      | "joinArenaWithAuthorization"
       | "operator"
       | "rewardAmounts"
       | "submitScore"
@@ -50,6 +78,7 @@ export interface AgenticCompetitionEngineInterface extends Interface {
       | "ArenaCreated"
       | "ArenaFinalized"
       | "ArenaJoined"
+      | "ArenaJoinedWithAuthorization"
       | "RewardClaimed"
       | "RewardPaid"
       | "RewardStored"
@@ -105,6 +134,14 @@ export interface AgenticCompetitionEngineInterface extends Interface {
     functionFragment: "joinArenaFor",
     values: [BigNumberish, AddressLike]
   ): string;
+  encodeFunctionData(
+    functionFragment: "joinArenaWithAuthorization",
+    values: [
+      BigNumberish,
+      AgenticCompetitionEngine.TransferAuthorizationStruct,
+      BytesLike
+    ]
+  ): string;
   encodeFunctionData(functionFragment: "operator", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "rewardAmounts",
@@ -141,6 +178,10 @@ export interface AgenticCompetitionEngineInterface extends Interface {
   decodeFunctionResult(functionFragment: "joinArena", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "joinArenaFor",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "joinArenaWithAuthorization",
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "operator", data: BytesLike): Result;
@@ -227,6 +268,31 @@ export namespace ArenaJoinedEvent {
   export interface OutputObject {
     arenaId: bigint;
     player: string;
+    totalPool: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace ArenaJoinedWithAuthorizationEvent {
+  export type InputTuple = [
+    arenaId: BigNumberish,
+    player: AddressLike,
+    nonce: BytesLike,
+    totalPool: BigNumberish
+  ];
+  export type OutputTuple = [
+    arenaId: bigint,
+    player: string,
+    nonce: string,
+    totalPool: bigint
+  ];
+  export interface OutputObject {
+    arenaId: bigint;
+    player: string;
+    nonce: string;
     totalPool: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
@@ -442,6 +508,16 @@ export interface AgenticCompetitionEngine extends BaseContract {
     "nonpayable"
   >;
 
+  joinArenaWithAuthorization: TypedContractMethod<
+    [
+      arenaId: BigNumberish,
+      authorization: AgenticCompetitionEngine.TransferAuthorizationStruct,
+      signature: BytesLike
+    ],
+    [void],
+    "nonpayable"
+  >;
+
   operator: TypedContractMethod<[], [string], "view">;
 
   rewardAmounts: TypedContractMethod<
@@ -554,6 +630,17 @@ export interface AgenticCompetitionEngine extends BaseContract {
     "nonpayable"
   >;
   getFunction(
+    nameOrSignature: "joinArenaWithAuthorization"
+  ): TypedContractMethod<
+    [
+      arenaId: BigNumberish,
+      authorization: AgenticCompetitionEngine.TransferAuthorizationStruct,
+      signature: BytesLike
+    ],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
     nameOrSignature: "operator"
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
@@ -598,6 +685,13 @@ export interface AgenticCompetitionEngine extends BaseContract {
     ArenaJoinedEvent.InputTuple,
     ArenaJoinedEvent.OutputTuple,
     ArenaJoinedEvent.OutputObject
+  >;
+  getEvent(
+    key: "ArenaJoinedWithAuthorization"
+  ): TypedContractEvent<
+    ArenaJoinedWithAuthorizationEvent.InputTuple,
+    ArenaJoinedWithAuthorizationEvent.OutputTuple,
+    ArenaJoinedWithAuthorizationEvent.OutputObject
   >;
   getEvent(
     key: "RewardClaimed"
@@ -671,6 +765,17 @@ export interface AgenticCompetitionEngine extends BaseContract {
       ArenaJoinedEvent.InputTuple,
       ArenaJoinedEvent.OutputTuple,
       ArenaJoinedEvent.OutputObject
+    >;
+
+    "ArenaJoinedWithAuthorization(uint256,address,bytes32,uint256)": TypedContractEvent<
+      ArenaJoinedWithAuthorizationEvent.InputTuple,
+      ArenaJoinedWithAuthorizationEvent.OutputTuple,
+      ArenaJoinedWithAuthorizationEvent.OutputObject
+    >;
+    ArenaJoinedWithAuthorization: TypedContractEvent<
+      ArenaJoinedWithAuthorizationEvent.InputTuple,
+      ArenaJoinedWithAuthorizationEvent.OutputTuple,
+      ArenaJoinedWithAuthorizationEvent.OutputObject
     >;
 
     "RewardClaimed(uint256,address,uint256)": TypedContractEvent<

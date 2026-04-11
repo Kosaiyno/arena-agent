@@ -9,3 +9,8 @@ cache/
 !.env.example
 backend/data/*.json
 frontend/.vite/
+# Environment files per-service
+backend/.env
+frontend/.env
+# Vercel local env
+.vercel/
