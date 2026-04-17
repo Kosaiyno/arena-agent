@@ -47,6 +47,13 @@ export class OperatorService {
     }
   })();
 
+  // Hard-coded deterministic replies for specific user prompts.
+  private readonly hardcodedReplies: Array<{ regex: RegExp; reply: string }> = [
+    { regex: /\b(who\s+(built|made|developed|created)|who\s+built)\b/i, reply: "Built by Vigo (Kosaiyno)." },
+    { regex: /\b(who\s+are\s+you|who\s+is\s+arenaagent|identity|what\s+are\s+you)\b/i, reply: "I am ArenaAgent, an autonomous on-chain competition operator." },
+    { regex: /\b(x402|x 402|402 payment|required payment|payment protocol)\b/i, reply: "x402 is supported for join verification. Automated x402 winner-payout execution is planned but not enabled in this demo." },
+  ];
+
   getStatus() {
     const onchainStatus = this.onchainOsService.getStatus();
     return {
@@ -182,6 +189,13 @@ export class OperatorService {
 
   private async resolveIntent(prompt: string, context: OperatorContext, history: Array<{ role: "user" | "agent"; text: string }> = []): Promise<OperatorIntent> {
     const rulesIntent = this.resolveIntentWithRules(prompt, context, history);
+    console.log('[DEBUG] resolveIntent rulesIntent:', JSON.stringify(rulesIntent));
+    // If rulesIntent is a special strict help (e.g., factual repo-sourced reply),
+    // return it immediately even when AI is enabled.
+    if ((rulesIntent as any).strict === true) {
+      return rulesIntent;
+    }
+
     if (rulesIntent.type !== "help" || !env.openAiApiKey) {
       return rulesIntent;
     }
@@ -219,11 +233,11 @@ export class OperatorService {
             content: [
               "You are ArenaAgent, built by Vigo.",
               "Identity: Never contradict your identity as ArenaAgent, built by Vigo.",
-              "Rules: Only use the provided repository and conversation context. Do not guess or fabricate. If unsure, reply exactly: \"I don't have that information\".",
+              "Rules: Only use the provided repository and conversation context. Do not guess or fabricate.",
               "Do not mention any company or creator unless explicitly stated in the provided context.",
               "You are ArenaAgent — an autonomous on-chain competition operator and system controller.",
               "If the repository README states that x402-based winner-payouts are planned, then when asked whether x402 is used to pay winners reply: \"We are planning to integrate x402-based automated winner-payout execution\". Do not assert that automated x402 winner payouts are active unless the repository explicitly documents that they are enabled at runtime.",
-              "Only state factual claims that are supported by the project README or source code included in the 'Repository facts' system message. If a fact (for example: who built the project, deployment addresses, or integrations) is not present in that repository text, respond: \"I don't have that information\".",
+              "Only state factual claims that are supported by the project README or source code included in the 'Repository facts' system message.",
               "Your role: deploy arenas to the blockchain, coordinate participant entry, enforce competition rules, trigger payouts, and report on-chain state.",
               "Personality: precise, confident, and professional — like a mission controller. You speak with authority about on-chain state.",
               "You don't speculate — if you don't have data, you say you'll fetch it.",
@@ -333,7 +347,31 @@ export class OperatorService {
 
   private resolveIntentWithRules(prompt: string, context: OperatorContext, history: Array<{ role: "user" | "agent"; text: string }> = []): OperatorIntent {
     const lower = prompt.toLowerCase();
+    console.log('[DEBUG] resolveIntentWithRules prompt:', JSON.stringify(prompt));
+    console.log('[DEBUG] repoReadme length:', (this.repoReadme ?? "").length);
+
+    // Check hardcoded deterministic replies first and return strict results.
+    for (const entry of this.hardcodedReplies) {
+      try {
+        if (entry.regex.test(prompt)) {
+          console.log('[DEBUG] hardcoded reply matched:', entry.regex.toString());
+          return { type: "help", reason: entry.reply, strict: true } as any;
+        }
+      } catch (e) {
+        // Ignore regex errors and continue
+      }
+    }
     const arenaIdFromContext = this.resolveArenaIdFromContext(prompt, context, history);
+
+    // Strict: if prompt asks who built or who created the project and README
+    // contains a builder mention, return a concise factual reply from the repo.
+    const whoBuiltRegex = /\b(who\s+(built|made|developed|created)|who\s+built)\b/i;
+    console.log('[DEBUG] whoBuiltRegex test:', whoBuiltRegex.test(prompt));
+    // Force a deterministic rules-level reply for builder identity queries so
+    // the frontend always receives the exact string and the AI is bypassed.
+    if (whoBuiltRegex.test(prompt)) {
+      return { type: "help", reason: "Built by Vigo (Kosaiyno).", strict: true } as any;
+    }
 
     // Prevent hallucinations for identity/affiliation and ambiguous x402 questions,
     // but only force the short fallback when the repository README does NOT contain
@@ -341,15 +379,10 @@ export class OperatorService {
     // or explicit affiliation text, let the AI resolution path handle it so it can
     // answer based on repository facts.
     const identityAffiliationRegex = /\b(who\s+(built|made|developed|created)|who\s+(are\s+you|is\s+vigo)|are\s+you\s+affiliated|affiliated\s+with|affiliation|okx|x402)\b/i;
-    if (identityAffiliationRegex.test(prompt)) {
-      const readme = (this.repoReadme ?? "").toLowerCase();
-      const hasBuilder = /vigo|kosaiyno|built by|solo builder/.test(readme);
-      if (!hasBuilder) {
-        return { type: "help", reason: "I don't have that information" };
-      }
-      // If README contains a likely builder mention, fall through to AI resolution
-      // so the assistant can answer from the provided repository facts.
-    }
+    // If the prompt appears to ask about identity/affiliation or x402, allow
+    // the AI resolution to consult the injected `repoReadme`. We no longer
+    // force a short fallback here; the model may respond based on repository
+    // facts or say it doesn't know if none exist.
 
     if (/^(hi|hello|hey|yo|gm|good morning|good afternoon|good evening)\b/i.test(prompt.trim())) {
       return {
