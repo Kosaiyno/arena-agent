@@ -244,9 +244,10 @@ export default function App() {
   const profileRef = useRef<HTMLDivElement>(null);
   const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "agent"; text: string }>>([{
     role: "agent",
-    text: "Hello! I'm ArenaAgent — your autonomous on-chain competition operator on X Layer. Tell me what competition to create, or ask about existing arenas.",
+    text: "Hello! I'm ArenaAgent — your autonomous on-chain competition operator. Tell me what competition to create, or ask about existing arenas.",
   }]);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatWindowRef = useRef<HTMLDivElement>(null);
   const nowSec = Math.floor(clockMs / 1000);
   const liveArenas = arenas.filter((arena) => !arena.finalized && !arena.closed && arena.endTime > nowSec);
   const payoutArenas = arenas.filter((arena) => arena.finalized || arena.closed || arena.endTime <= nowSec);
@@ -855,7 +856,17 @@ export default function App() {
   }, [selectedArenaId]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    try {
+      const el = chatWindowRef.current;
+      if (el) {
+        // Keep the chat window scrolled to the bottom when messages change.
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+        return;
+      }
+    } catch {
+      // Fallback to previous behavior if needed
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [chatMessages]);
 
   // Close profile panel on outside click
@@ -1729,7 +1740,7 @@ export default function App() {
             <span>Agent</span>
             <span className="chat-live">&#x25CF; live</span>
           </div>
-          <div className="chat-window">
+          <div className="chat-window" ref={chatWindowRef}>
             {chatMessages.map((msg, i) => (
               <div key={i} className={"chat-row chat-row--" + msg.role}>
                 <div className="chat-bubble"><p>{msg.text}</p></div>

@@ -150,6 +150,8 @@ The `POST /arena/:id/x402-join` endpoint implements the x402 payment standard:
 
 This is visible to agent judges via on-chain transaction history.
 
+Note: the project README and the on-chain contract ABI include x402-related payment entrypoints (for example, `payWinnerWithAuthorization`). The backend currently verifies x402 join payments (entry flows). We are planning to integrate x402-based automated winner-payout execution in a future release; until then, winners may use the fallback `claim()` path as needed.
+
 ---
 
 ## Working Mechanics

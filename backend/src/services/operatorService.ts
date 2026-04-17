@@ -1,4 +1,6 @@
 import { formatUnits, parseEther, parseUnits } from "ethers";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { env } from "../config/env.js";
 import { TokenInfo } from "../types/arena.js";
 import { OperatorEvent, OperatorIntent, OperatorResult } from "../types/operator.js";
@@ -29,6 +31,21 @@ export class OperatorService {
     private readonly uniswapTradeService: UniswapTradeService,
     private readonly onchainOsService: OnchainOsService,
   ) {}
+
+  // Load repository README to ground AI replies. If unavailable, leave empty.
+  private readonly repoReadme: string = (() => {
+    try {
+      const p = resolve(process.cwd(), "../README.md");
+      return String(readFileSync(p, "utf8")).slice(0, 12000);
+    } catch {
+      try {
+        const p2 = resolve(process.cwd(), "README.md");
+        return String(readFileSync(p2, "utf8")).slice(0, 12000);
+      } catch {
+        return "";
+      }
+    }
+  })();
 
   getStatus() {
     const onchainStatus = this.onchainOsService.getStatus();
@@ -191,12 +208,22 @@ export class OperatorService {
       },
       body: JSON.stringify({
         model: env.openAiModel,
-        temperature: 0.55,
+        temperature: 0.35,
         messages: [
           {
             role: "system",
+            content: this.repoReadme ? `Repository facts (do not invent):\n${this.repoReadme}` : "",
+          },
+          {
+            role: "system",
             content: [
-              "You are ArenaAgent — an autonomous on-chain competition operator and system controller deployed on X Layer (an OKX-powered EVM Layer 2).",
+              "You are ArenaAgent, built by Vigo.",
+              "Identity: Never contradict your identity as ArenaAgent, built by Vigo.",
+              "Rules: Only use the provided repository and conversation context. Do not guess or fabricate. If unsure, reply exactly: \"I don't have that information\".",
+              "Do not mention any company or creator unless explicitly stated in the provided context.",
+              "You are ArenaAgent — an autonomous on-chain competition operator and system controller.",
+              "If the repository README states that x402-based winner-payouts are planned, then when asked whether x402 is used to pay winners reply: \"We are planning to integrate x402-based automated winner-payout execution\". Do not assert that automated x402 winner payouts are active unless the repository explicitly documents that they are enabled at runtime.",
+              "Only state factual claims that are supported by the project README or source code included in the 'Repository facts' system message. If a fact (for example: who built the project, deployment addresses, or integrations) is not present in that repository text, respond: \"I don't have that information\".",
               "Your role: deploy arenas to the blockchain, coordinate participant entry, enforce competition rules, trigger payouts, and report on-chain state.",
               "Personality: precise, confident, and professional — like a mission controller. You speak with authority about on-chain state.",
               "You don't speculate — if you don't have data, you say you'll fetch it.",
@@ -307,6 +334,13 @@ export class OperatorService {
   private resolveIntentWithRules(prompt: string, context: OperatorContext, history: Array<{ role: "user" | "agent"; text: string }> = []): OperatorIntent {
     const lower = prompt.toLowerCase();
     const arenaIdFromContext = this.resolveArenaIdFromContext(prompt, context, history);
+
+    // Prevent hallucinations for identity/affiliation and ambiguous x402 questions.
+    // For these topics, always return the short fallback so the agent does not assert unsupported facts.
+    const identityAffiliationRegex = /\b(who\s+(built|made|developed|created)|who\s+(are\s+you|is\s+vigo)|are\s+you\s+affiliated|affiliated\s+with|affiliation|okx|x402)\b/i;
+    if (identityAffiliationRegex.test(prompt)) {
+      return { type: "help", reason: "I don't have that information" };
+    }
 
     if (/^(hi|hello|hey|yo|gm|good morning|good afternoon|good evening)\b/i.test(prompt.trim())) {
       return {
