@@ -51,6 +51,7 @@ contract AgenticCompetitionEngine {
     mapping(uint256 => mapping(address => uint256)) public rewardAmounts;
     mapping(uint256 => mapping(address => bool)) public claimed;
     mapping(uint256 => address[]) private arenaWinners;
+    mapping(bytes32 => bool) public authorizationUsed;
 
     event ArenaCreated(uint256 indexed arenaId, uint256 entryFee, uint256 duration, uint256 endTime);
     event ArenaJoined(uint256 indexed arenaId, address indexed player, uint256 totalPool);
@@ -61,6 +62,7 @@ contract AgenticCompetitionEngine {
     event RewardStored(uint256 indexed arenaId, address indexed player, uint256 amount);
     event RewardClaimed(uint256 indexed arenaId, address indexed player, uint256 amount);
     event ArenaJoinedWithAuthorization(uint256 indexed arenaId, address indexed player, bytes32 indexed nonce, uint256 totalPool);
+    event AuthorizationConsumed(uint256 indexed arenaId, address indexed sponsor, address indexed recipient, bytes32 nonce, uint256 amount);
 
     error OnlyOperator();
     error ArenaMissing();
@@ -225,6 +227,51 @@ contract AgenticCompetitionEngine {
         }
 
         emit ArenaFinalized(arenaId, winners, percentages);
+    }
+
+    // Sponsor-signed x402-style payout authorization consumption.
+    // Allows the operator (agent) to submit a sponsor authorization to pay a winner.
+    function payWinnerWithAuthorization(
+        uint256 arenaId,
+        address winner,
+        TransferAuthorization calldata authorization,
+        bytes calldata signature
+    ) external onlyOperator existingArena(arenaId) {
+        Arena storage arena = arenas[arenaId];
+        if (arena.entryToken == address(0)) revert InvalidAuthorization();
+
+        if (authorization.to != winner) revert InvalidAuthorization();
+        if (authorization.value == 0) revert InvalidAuthorization();
+        if (block.timestamp < authorization.validAfter || block.timestamp > authorization.validBefore) revert InvalidAuthorization();
+
+        bytes32 nonce = authorization.nonce;
+        if (authorizationUsed[nonce]) revert InvalidAuthorization();
+
+        (uint8 v, bytes32 r, bytes32 s) = _splitSignature(signature);
+
+        // Perform the x402 transfer from sponsor -> winner using the arena's entry token
+        IERC20X402(arena.entryToken).transferWithAuthorization(
+            authorization.from,
+            authorization.to,
+            authorization.value,
+            authorization.validAfter,
+            authorization.validBefore,
+            authorization.nonce,
+            v,
+            r,
+            s
+        );
+
+        authorizationUsed[nonce] = true;
+
+        // If a stored reward exists for this winner, clear it; otherwise we still emit paid event
+        if (rewardAmounts[arenaId][winner] > 0) {
+            rewardAmounts[arenaId][winner] = 0;
+            claimed[arenaId][winner] = true;
+        }
+
+        emit AuthorizationConsumed(arenaId, authorization.from, winner, nonce, authorization.value);
+        emit RewardPaid(arenaId, winner, authorization.value);
     }
 
     function claim(uint256 arenaId) external existingArena(arenaId) {

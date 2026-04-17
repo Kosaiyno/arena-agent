@@ -74,4 +74,5 @@ export const env = {
   preferOkxSwap: (process.env.PREFER_OKX_SWAP ?? "false") === "true",
   okLinkApiKey: process.env.OKLINK_API_KEY ?? "",
   okLinkChainShortName: process.env.OKLINK_CHAIN_SHORT_NAME ?? "XLAYER",
+  // sponsorPrivateKey removed as automated sponsor signer was reverted
 };

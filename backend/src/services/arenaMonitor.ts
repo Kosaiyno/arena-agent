@@ -87,6 +87,7 @@ export class ArenaMonitor {
             payouts: PayoutService.describe(env.defaultPayouts, winners.length),
           },
         });
+        // After finalization the monitor leaves payout handling to the contract/operator.
       }
     }
   }

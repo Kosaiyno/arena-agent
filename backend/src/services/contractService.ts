@@ -73,6 +73,11 @@ export class ContractService {
     await tx.wait();
   }
 
+  async payWinnerWithAuthorization(arenaId: number, winner: string, authorization: { from: string; to: string; value: string; validAfter: string; validBefore: string; nonce: string }, signature: string): Promise<void> {
+    // payWinnerWithAuthorization removed as x402 winner-payment integration was reverted
+    throw new Error("payWinnerWithAuthorization is not supported");
+  }
+
   async getArenaWinners(arenaId: number): Promise<string[]> {
     return (await this.contract.getArenaWinners(arenaId)) as string[];
   }

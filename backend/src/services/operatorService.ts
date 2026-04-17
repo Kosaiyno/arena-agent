@@ -335,11 +335,20 @@ export class OperatorService {
     const lower = prompt.toLowerCase();
     const arenaIdFromContext = this.resolveArenaIdFromContext(prompt, context, history);
 
-    // Prevent hallucinations for identity/affiliation and ambiguous x402 questions.
-    // For these topics, always return the short fallback so the agent does not assert unsupported facts.
+    // Prevent hallucinations for identity/affiliation and ambiguous x402 questions,
+    // but only force the short fallback when the repository README does NOT contain
+    // supporting text (e.g., the builder name). If the README includes the builder
+    // or explicit affiliation text, let the AI resolution path handle it so it can
+    // answer based on repository facts.
     const identityAffiliationRegex = /\b(who\s+(built|made|developed|created)|who\s+(are\s+you|is\s+vigo)|are\s+you\s+affiliated|affiliated\s+with|affiliation|okx|x402)\b/i;
     if (identityAffiliationRegex.test(prompt)) {
-      return { type: "help", reason: "I don't have that information" };
+      const readme = (this.repoReadme ?? "").toLowerCase();
+      const hasBuilder = /vigo|kosaiyno|built by|solo builder/.test(readme);
+      if (!hasBuilder) {
+        return { type: "help", reason: "I don't have that information" };
+      }
+      // If README contains a likely builder mention, fall through to AI resolution
+      // so the assistant can answer from the provided repository facts.
     }
 
     if (/^(hi|hello|hey|yo|gm|good morning|good afternoon|good evening)\b/i.test(prompt.trim())) {

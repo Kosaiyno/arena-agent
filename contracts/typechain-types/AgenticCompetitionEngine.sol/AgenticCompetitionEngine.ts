@@ -54,6 +54,7 @@ export interface AgenticCompetitionEngineInterface extends Interface {
   getFunction(
     nameOrSignature:
       | "arenaCount"
+      | "authorizationUsed"
       | "bestScores"
       | "claim"
       | "claimed"
@@ -68,6 +69,7 @@ export interface AgenticCompetitionEngineInterface extends Interface {
       | "joinArenaFor"
       | "joinArenaWithAuthorization"
       | "operator"
+      | "payWinnerWithAuthorization"
       | "rewardAmounts"
       | "submitScore"
   ): FunctionFragment;
@@ -79,6 +81,7 @@ export interface AgenticCompetitionEngineInterface extends Interface {
       | "ArenaFinalized"
       | "ArenaJoined"
       | "ArenaJoinedWithAuthorization"
+      | "AuthorizationConsumed"
       | "RewardClaimed"
       | "RewardPaid"
       | "RewardStored"
@@ -88,6 +91,10 @@ export interface AgenticCompetitionEngineInterface extends Interface {
   encodeFunctionData(
     functionFragment: "arenaCount",
     values?: undefined
+  ): string;
+  encodeFunctionData(
+    functionFragment: "authorizationUsed",
+    values: [BytesLike]
   ): string;
   encodeFunctionData(
     functionFragment: "bestScores",
@@ -144,6 +151,15 @@ export interface AgenticCompetitionEngineInterface extends Interface {
   ): string;
   encodeFunctionData(functionFragment: "operator", values?: undefined): string;
   encodeFunctionData(
+    functionFragment: "payWinnerWithAuthorization",
+    values: [
+      BigNumberish,
+      AddressLike,
+      AgenticCompetitionEngine.TransferAuthorizationStruct,
+      BytesLike
+    ]
+  ): string;
+  encodeFunctionData(
     functionFragment: "rewardAmounts",
     values: [BigNumberish, AddressLike]
   ): string;
@@ -153,6 +169,10 @@ export interface AgenticCompetitionEngineInterface extends Interface {
   ): string;
 
   decodeFunctionResult(functionFragment: "arenaCount", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "authorizationUsed",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(functionFragment: "bestScores", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "claim", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "claimed", data: BytesLike): Result;
@@ -185,6 +205,10 @@ export interface AgenticCompetitionEngineInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "operator", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "payWinnerWithAuthorization",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(
     functionFragment: "rewardAmounts",
     data: BytesLike
@@ -294,6 +318,34 @@ export namespace ArenaJoinedWithAuthorizationEvent {
     player: string;
     nonce: string;
     totalPool: bigint;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace AuthorizationConsumedEvent {
+  export type InputTuple = [
+    arenaId: BigNumberish,
+    sponsor: AddressLike,
+    recipient: AddressLike,
+    nonce: BytesLike,
+    amount: BigNumberish
+  ];
+  export type OutputTuple = [
+    arenaId: bigint,
+    sponsor: string,
+    recipient: string,
+    nonce: string,
+    amount: bigint
+  ];
+  export interface OutputObject {
+    arenaId: bigint;
+    sponsor: string;
+    recipient: string;
+    nonce: string;
+    amount: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -418,6 +470,8 @@ export interface AgenticCompetitionEngine extends BaseContract {
 
   arenaCount: TypedContractMethod<[], [bigint], "view">;
 
+  authorizationUsed: TypedContractMethod<[arg0: BytesLike], [boolean], "view">;
+
   bestScores: TypedContractMethod<
     [arg0: BigNumberish, arg1: AddressLike],
     [bigint],
@@ -520,6 +574,17 @@ export interface AgenticCompetitionEngine extends BaseContract {
 
   operator: TypedContractMethod<[], [string], "view">;
 
+  payWinnerWithAuthorization: TypedContractMethod<
+    [
+      arenaId: BigNumberish,
+      winner: AddressLike,
+      authorization: AgenticCompetitionEngine.TransferAuthorizationStruct,
+      signature: BytesLike
+    ],
+    [void],
+    "nonpayable"
+  >;
+
   rewardAmounts: TypedContractMethod<
     [arg0: BigNumberish, arg1: AddressLike],
     [bigint],
@@ -539,6 +604,9 @@ export interface AgenticCompetitionEngine extends BaseContract {
   getFunction(
     nameOrSignature: "arenaCount"
   ): TypedContractMethod<[], [bigint], "view">;
+  getFunction(
+    nameOrSignature: "authorizationUsed"
+  ): TypedContractMethod<[arg0: BytesLike], [boolean], "view">;
   getFunction(
     nameOrSignature: "bestScores"
   ): TypedContractMethod<
@@ -644,6 +712,18 @@ export interface AgenticCompetitionEngine extends BaseContract {
     nameOrSignature: "operator"
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
+    nameOrSignature: "payWinnerWithAuthorization"
+  ): TypedContractMethod<
+    [
+      arenaId: BigNumberish,
+      winner: AddressLike,
+      authorization: AgenticCompetitionEngine.TransferAuthorizationStruct,
+      signature: BytesLike
+    ],
+    [void],
+    "nonpayable"
+  >;
+  getFunction(
     nameOrSignature: "rewardAmounts"
   ): TypedContractMethod<
     [arg0: BigNumberish, arg1: AddressLike],
@@ -692,6 +772,13 @@ export interface AgenticCompetitionEngine extends BaseContract {
     ArenaJoinedWithAuthorizationEvent.InputTuple,
     ArenaJoinedWithAuthorizationEvent.OutputTuple,
     ArenaJoinedWithAuthorizationEvent.OutputObject
+  >;
+  getEvent(
+    key: "AuthorizationConsumed"
+  ): TypedContractEvent<
+    AuthorizationConsumedEvent.InputTuple,
+    AuthorizationConsumedEvent.OutputTuple,
+    AuthorizationConsumedEvent.OutputObject
   >;
   getEvent(
     key: "RewardClaimed"
@@ -776,6 +863,17 @@ export interface AgenticCompetitionEngine extends BaseContract {
       ArenaJoinedWithAuthorizationEvent.InputTuple,
       ArenaJoinedWithAuthorizationEvent.OutputTuple,
       ArenaJoinedWithAuthorizationEvent.OutputObject
+    >;
+
+    "AuthorizationConsumed(uint256,address,address,bytes32,uint256)": TypedContractEvent<
+      AuthorizationConsumedEvent.InputTuple,
+      AuthorizationConsumedEvent.OutputTuple,
+      AuthorizationConsumedEvent.OutputObject
+    >;
+    AuthorizationConsumed: TypedContractEvent<
+      AuthorizationConsumedEvent.InputTuple,
+      AuthorizationConsumedEvent.OutputTuple,
+      AuthorizationConsumedEvent.OutputObject
     >;
 
     "RewardClaimed(uint256,address,uint256)": TypedContractEvent<

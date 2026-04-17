@@ -69,6 +69,7 @@ export class StateStore {
   getArenaMeta(arenaId: number): ArenaMeta | null {
     return this.state.arenaMeta[String(arenaId)] ?? null;
   }
+ 
 
   getArenaMetaMap(): Record<number, ArenaMeta | null> {
     const entries = Object.entries(this.state.arenaMeta).map(([arenaId, meta]) => [Number(arenaId), meta ?? null] as const);
@@ -111,6 +112,7 @@ export class StateStore {
         operatorEvents: parsed.operatorEvents ?? [],
         arenaConfigs: parsed.arenaConfigs ?? {},
         arenaMeta: parsed.arenaMeta ?? {},
+        // authorizations field removed in this version
       };
     } catch {
       const initial = emptyState();

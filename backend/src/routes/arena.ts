@@ -53,6 +53,8 @@ export function createArenaRouter(
     }
   });
 
+
+
   router.post("/arena", async (request: Request, response: Response, next: NextFunction) => {
     try {
       const { entryFeeWei, durationSeconds, settlementTokenSymbol, title, game, metric } = request.body as {
