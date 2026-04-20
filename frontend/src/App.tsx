@@ -231,6 +231,7 @@ export default function App() {
   const [addTokenLoading, setAddTokenLoading] = useState(false);
   const [addTokenError, setAddTokenError] = useState<string | null>(null);
   const [operatorLoading, setOperatorLoading] = useState(false);
+  // recurring runs are automatic; no UI loading state needed
   const [localArenaFeed, setLocalArenaFeed] = useState<Record<number, ArenaFeedItem[]>>({});
   const [personalActivity, setPersonalActivity] = useState<ArenaFeedItem[]>([]);
   const [clockMs, setClockMs] = useState(Date.now());
@@ -327,6 +328,8 @@ export default function App() {
       }
     }
   }
+
+  // Recurring creation and triggering handled automatically by the backend agent.
 
   function isRpcThrottleError(message: string): boolean {
     const lower = message.toLowerCase();
@@ -1577,7 +1580,7 @@ export default function App() {
 
             <Leaderboard entries={leaderboard} metric={meta?.metric} game={meta?.game} />
 
-            {!arenaEnded && !arena.finalized && (
+            {!arenaEnded && !arena.finalized && !(meta?.metric && meta.metric.toLowerCase() === "pnl") && (
               <div className="action-card">
                 <h3>Record Result</h3>
                 <form className="score-form" onSubmit={handleSubmitScore}>
@@ -1641,6 +1644,7 @@ export default function App() {
           <span className={operatorStatus?.aiEnabled ? "mode-badge mode-badge--ai" : "mode-badge"}>
             {operatorStatus?.aiEnabled ? ("AI · " + (operatorStatus.model ?? "llm")) : "Rules"}
           </span>
+          {/* Recurring runs are created automatically by the agent each day */}
           <div className="wallet-wrap" ref={profileRef}>
             <button
               className={"btn-connect" + (profileOpen ? " btn-connect--active" : "")}

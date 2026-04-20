@@ -16,6 +16,8 @@ type PersistedState = {
   operatorEvents: OperatorEvent[];
   arenaConfigs: Record<string, { settlementTokenSymbol: string }>;
   arenaMeta: Record<string, ArenaMeta>;
+  recurringConfigs?: Record<string, any>;
+  arenaSnapshots?: Record<string, Record<string, number>>;
 };
 
 const emptyState = (): PersistedState => ({
@@ -24,6 +26,8 @@ const emptyState = (): PersistedState => ({
   operatorEvents: [],
   arenaConfigs: {},
   arenaMeta: {},
+    recurringConfigs: {},
+    arenaSnapshots: {},
 });
 
 export class StateStore {
@@ -69,6 +73,51 @@ export class StateStore {
   getArenaMeta(arenaId: number): ArenaMeta | null {
     return this.state.arenaMeta[String(arenaId)] ?? null;
   }
+
+  // Arena snapshots (start balances per user, numeric settlement units)
+  getArenaSnapshots(arenaId: number): Record<string, number> {
+    return this.state.arenaSnapshots?.[String(arenaId)] ?? {};
+  }
+
+  saveArenaSnapshot(arenaId: number, user: string, value: number): void {
+    const next = { ...(this.state.arenaSnapshots ?? {}) };
+    next[String(arenaId)] = { ...(next[String(arenaId)] ?? {}), [user]: value };
+    this.state = { ...this.state, arenaSnapshots: next };
+    this.persist();
+  }
+
+  deleteArenaSnapshots(arenaId: number): void {
+    const next = { ...(this.state.arenaSnapshots ?? {}) };
+    delete next[String(arenaId)];
+    this.state = { ...this.state, arenaSnapshots: next };
+    this.persist();
+  }
+
+  // Recurring configs
+  getRecurringConfigs(): Record<string, any> {
+    return this.state.recurringConfigs ?? {};
+  }
+
+  saveRecurringConfig(id: string, config: any): void {
+    this.state = {
+      ...this.state,
+      recurringConfigs: {
+        ...this.state.recurringConfigs,
+        [id]: config,
+      },
+    };
+    this.persist();
+  }
+
+  deleteRecurringConfig(id: string): void {
+    const next = { ...this.state.recurringConfigs } ?? {};
+    delete next[id];
+    this.state = {
+      ...this.state,
+      recurringConfigs: next,
+    };
+    this.persist();
+  }
  
 
   getArenaMetaMap(): Record<number, ArenaMeta | null> {
@@ -112,7 +161,8 @@ export class StateStore {
         operatorEvents: parsed.operatorEvents ?? [],
         arenaConfigs: parsed.arenaConfigs ?? {},
         arenaMeta: parsed.arenaMeta ?? {},
-        // authorizations field removed in this version
+        recurringConfigs: parsed.recurringConfigs ?? {},
+        arenaSnapshots: parsed.arenaSnapshots ?? {},
       };
     } catch {
       const initial = emptyState();

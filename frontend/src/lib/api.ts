@@ -338,3 +338,27 @@ export async function buildSwapAndJoin(
 export async function getWalletBalances(user: string): Promise<{ user: string; balances: WalletTokenBalance[] }> {
   return request(`/wallet/balances?user=${encodeURIComponent(user)}`);
 }
+
+export async function listRecurring(): Promise<{ recurring: Array<Record<string, any>> }> {
+  return request(`/recurring`);
+}
+
+export async function createRecurring(payload: {
+  title?: string;
+  cron?: string | null;
+  intervalSeconds?: number | null;
+  entryFeeWei: string;
+  durationSeconds: number;
+  settlementTokenSymbol: string;
+  supportedTokens?: string[];
+  minTrades?: number;
+}): Promise<{ recurring: Record<string, any> }> {
+  return request(`/recurring`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function triggerRecurring(id: string): Promise<{ arenaId: number }> {
+  return request(`/recurring/${encodeURIComponent(id)}/trigger`, { method: "POST" });
+}

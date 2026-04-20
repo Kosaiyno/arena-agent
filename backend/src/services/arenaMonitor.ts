@@ -3,6 +3,7 @@ import { ContractService } from "./contractService.js";
 import { PayoutService } from "./payoutService.js";
 import { ScoreService } from "./scoreService.js";
 import { StateStore } from "./stateStore.js";
+import { PnlService } from "./pnlService.js";
 
 export class ArenaMonitor {
   private timer: NodeJS.Timeout | null = null;
@@ -12,6 +13,7 @@ export class ArenaMonitor {
     private readonly contractService: ContractService,
     private readonly scoreService: ScoreService,
     private readonly stateStore: StateStore,
+    private readonly pnlService?: PnlService,
   ) {}
 
   start(): void {
@@ -53,6 +55,15 @@ export class ArenaMonitor {
     const now = Math.floor(Date.now() / 1000);
 
     for (const arena of arenas) {
+      // For active arenas, update PnL scores so leaderboard reflects live PnL
+      try {
+        if (!arena.closed && this.pnlService) {
+          await this.pnlService.updateScoresForArena(arena.id);
+        }
+      } catch (err) {
+        console.warn(`[ArenaMonitor] live pnl update failed for arena #${arena.id}:`, err instanceof Error ? err.message : String(err));
+      }
+
       if (!arena.closed && now >= arena.endTime) {
         await this.contractService.closeArena(arena.id);
         this.stateStore.appendOperatorEvent({
@@ -65,6 +76,13 @@ export class ArenaMonitor {
       }
 
       if (arena.closed && !arena.finalized) {
+        // Ensure PnL-based scores are updated before choosing winners
+        try {
+          if (this.pnlService) await this.pnlService.updateScoresForArena(arena.id);
+        } catch (err) {
+          console.warn(`[ArenaMonitor] pnl update failed for arena #${arena.id}:`, err instanceof Error ? err.message : String(err));
+        }
+
         const winners = this.scoreService.getTopWinners(arena.id, 1);
         if (winners.length === 0) {
           continue;

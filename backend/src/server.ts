@@ -18,6 +18,9 @@ import { StateStore } from "./services/stateStore.js";
 import { TokenRegistry } from "./services/tokenRegistry.js";
 import { UniswapTradeService } from "./services/uniswapTradeService.js";
 import { WalletInspectionService } from "./services/walletInspectionService.js";
+import { RecurringService } from "./services/recurringService.js";
+import { createRecurringRouter } from "./routes/recurring.js";
+import { SchedulerService } from "./services/schedulerService.js";
 
 const app = express();
 const stateStore = new StateStore();
@@ -32,14 +35,40 @@ const okxPortfolioService = new OkxPortfolioService(tokenRegistry);
 const okxX402Service = new OkxX402Service();
 const routeRecommendationService = new RouteRecommendationService(tokenRegistry, uniswapTradeService, onchainOsService);
 const operatorService = new OperatorService(contractService, scoreService, stateStore, uniswapTradeService, onchainOsService);
-const arenaMonitor = new ArenaMonitor(contractService, scoreService, stateStore);
+import { PnlService } from "./services/pnlService.js";
+
+const pnlService = new PnlService(arenaViewService, walletInspectionService, scoreService, stateStore);
+const arenaMonitor = new ArenaMonitor(contractService, scoreService, stateStore, pnlService);
 const agentWalletService = new AgentWalletService();
+const recurringService = new RecurringService(stateStore, contractService);
+const schedulerService = new SchedulerService(recurringService, stateStore);
 
 app.use(cors());
 app.use(express.json());
 app.use(createArenaRouter(contractService, arenaViewService, scoreService, walletInspectionService, routeRecommendationService, stateStore, okxPortfolioService, okxX402Service));
 app.use(createOperatorRouter(operatorService));
 app.use(createAgentRouter(agentWalletService));
+app.use(createRecurringRouter(recurringService));
+schedulerService.start();
+
+// Temporary admin endpoint to trigger PnL update for an arena (useful for debugging)
+app.post("/admin/pnl/:id", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const arenaId = Number(req.params.id);
+    if (!Number.isInteger(arenaId) || arenaId <= 0) {
+      res.status(400).json({ error: "Valid arena id is required" });
+      return;
+    }
+    if (!pnlService) {
+      res.status(500).json({ error: "PnlService not configured" });
+      return;
+    }
+    await pnlService.updateScoresForArena(arenaId);
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
 
 app.get("/health", (_request: Request, response: Response) => {
   response.json({ status: "ok" });
